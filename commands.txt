@@ -1,0 +1,24 @@
+avviare la immagine base ubuntu o la mia con librerie:
+docker run -it --rm -v $(pwd):/app -w /app ubuntu bash
+docker run -it -v $(pwd):/app -w /app antlr-dev bash
+
+download pip:
+apt update && apt install -y python3-pip  //aggiungere build-essential libantlr4-runtime-dev per c++
+
+download antlr:
+pip install antlr4-tools --break-system-packages
+
+define version:
+export ANTLR4_TOOLS_ANTLR_VERSION=4.13.2  //4.10
+
+test:
+antlr4-parse janus.g4 program -tree
+
+generazione parser cpp:
+antlr4 -Dlanguage=Cpp -visitor janus.g4
+
+compilazione progetto:
+g++ -std=c++17 main.cpp janus*.cpp -lantlr4-runtime -o janusinter
+
+g++ -std=c++20 -I janus -I /usr/include/antlr4-runtime maintest.cpp janus/janus*.cpp -lantlr4-runtime -o janusintertest
+./janusintertest myprogram.janus -m main_fwd -d 8 10

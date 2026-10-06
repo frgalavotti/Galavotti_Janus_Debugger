@@ -1,0 +1,27 @@
+num
+root
+z
+bit
+
+procedure root
+    bit += 1
+    from bit = 1 loop
+        call doublebit
+    until (bit * bit) > num
+
+    from (bit * bit) > num do
+        uncall doublebit
+        if ((root + bit) * (root + bit)) <= num then
+            root += bit
+        fi (root / bit) % 2 != 0
+    until bit = 1
+    num -= root * root
+
+procedure doublebit
+    z += bit
+    bit += z
+    z -= bit / 2
+
+procedure main
+    num += 25
+    call root
