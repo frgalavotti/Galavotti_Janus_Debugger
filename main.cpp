@@ -16,37 +16,50 @@ using namespace std;
 class JanusInterpreter : public janusBaseVisitor
 {
 private:
-    bool reverse=false;
-    map<size_t,size_t> debuglines;
+    bool reverse = false;
+    map<size_t, size_t> debuglines;
+
 public:
     map<string, int> variables;
     map<string, vector<int>> arrays;
-    map<string, janusParser::FunctionContext*> procedures;
+    map<string, janusParser::FunctionContext *> procedures;
 
-    JanusInterpreter(map<size_t,size_t> d) : debuglines(d) {}
+    JanusInterpreter(map<size_t, size_t> d) : debuglines(d) {}
 
-    void checkDebug(antlr4::ParserRuleContext *ctx) {
-        if (ctx && ctx->getStart()) {
+    void checkDebug(antlr4::ParserRuleContext *ctx)
+    {
+        if (ctx && ctx->getStart())
+        {
             size_t line = ctx->getStart()->getLine();
             string value = ctx->getText();
-            
-            if (auto ifctx = dynamic_cast<janusParser::IfExpressionContext*>(ctx)) {
-                if (ifctx->expression()) value = "if " + ifctx->expression()->getText();
-            } 
-            else if (dynamic_cast<janusParser::DoExpContext*>(ctx)) {
+
+            if (auto ifctx = dynamic_cast<janusParser::IfExpressionContext *>(ctx))
+            {
+                if (ifctx->expression())
+                    value = "if " + ifctx->expression()->getText();
+            }
+            else if (dynamic_cast<janusParser::DoExpContext *>(ctx))
+            {
                 value = "do";
             }
-            else if (dynamic_cast<janusParser::LoopExpContext*>(ctx)) {
+            else if (dynamic_cast<janusParser::LoopExpContext *>(ctx))
+            {
                 value = "loop";
             }
-            else if (ctx->getStart()->getText() == "else") {
+            else if (ctx->getStart()->getText() == "else")
+            {
                 value = "else";
             }
 
-            if (debuglines.contains(line)) {
-                printVariables(line,++debuglines[line],value);
+            if (debuglines.contains(line))
+            {
+                printVariables(line, ++debuglines[line], value);
                 string input;
                 getline(cin, input);
+                if (input == "i")
+                {
+                    reverse = !reverse;
+                }
             }
         }
     }
@@ -73,31 +86,95 @@ public:
     virtual any visitFunctions(janusParser::FunctionsContext *ctx) override
     {
         string procName = ctx->function()->functionName()->getText();
-        if(procedures.contains(procName)) throw runtime_error("each procedure must have a different name");
-        else procedures[procName] = ctx->function();
-        if(ctx->functions()!=nullptr) return visit(ctx->functions());
-        else return any();
+        if (procedures.contains(procName))
+            throw runtime_error("each procedure must have a different name");
+        else
+            procedures[procName] = ctx->function();
+        if (ctx->functions() != nullptr)
+            return visit(ctx->functions());
+        else
+            return any();
+    }
+
+    void visitNextStatement(janusParser::StatementsContext *ctx)
+    {
+        if (!ctx)return;
+
+        janusParser::StatementsContext *stmnt = ctx;
+
+        while (stmnt != nullptr)
+        {
+            auto *parent = dynamic_cast<janusParser::StatementsContext *>(stmnt->parent);
+            if (!parent)
+            {
+                return;
+            }
+            if (!reverse)
+            {
+                if (parent->statements(0) == stmnt)
+                {
+                    visit(parent->statements(1));
+                    return;
+                }
+            }
+            else
+            {
+                if (parent->statements(1) == stmnt)
+                {
+                    visit(parent->statements(0));
+                    return;
+                }
+            }
+            stmnt = parent;
+        }
+
+        return;
     }
 
     virtual any visitStatements(janusParser::StatementsContext *ctx) override
     {
-
-        if(ctx->assignmentExpression()!=nullptr) return visit(ctx->assignmentExpression());
-        else if(ctx->ifConstructor()!=nullptr) return visit(ctx->ifConstructor());
-        else if(ctx->loopConstructor()!=nullptr) return visit(ctx->loopConstructor());
-        else if(ctx->functionCall()!=nullptr) return visit(ctx->functionCall());
-        else if(ctx->skip()!=nullptr) return visit(ctx->skip());
+        if (ctx->assignmentExpression() != nullptr)
+        {
+            visit(ctx->assignmentExpression());
+            visitNextStatement(ctx);
+            return any();
+        }
+        else if (ctx->ifConstructor() != nullptr)
+        {
+            visit(ctx->ifConstructor());
+            visitNextStatement(ctx);
+            return any();
+        }
+        else if (ctx->loopConstructor() != nullptr)
+        {
+            visit(ctx->loopConstructor());
+            visitNextStatement(ctx);
+            return any();
+        }
+        else if (ctx->functionCall() != nullptr)
+        {
+            visit(ctx->functionCall());
+            visitNextStatement(ctx);
+            return any();
+        }
+        else if (ctx->skip() != nullptr)
+        {
+            visit(ctx->skip());
+            visitNextStatement(ctx);
+            return any();
+        }
         else
         {
-            else
-        {
-            if(reverse){
+            if (reverse)
+            {
                 visit(ctx->statements(1));
+                return any();
+            }
+            else
+            {
                 visit(ctx->statements(0));
                 return any();
             }
-            else return visitChildren(ctx);
-        }
         }
     }
 
@@ -201,34 +278,43 @@ public:
                 variables[varName] = v;
         };
 
-        if (op == "+=")
-            reverse? setVal(getVal() - val) : setVal(getVal() + val);
-        else if (op == "-=")
-            reverse? setVal(getVal() + val) : setVal(getVal() - val);
-        else if (op == "^=")
-            setVal(getVal() ^ val);
-        else if (op == "<=>")
+        auto assign = [&]()
         {
-            int current = getVal();
-            auto *expr = isArray ? ctx->expression(1) : ctx->expression(0);
-            if (expr && expr->TextDigit() != nullptr)
+            if (op == "+=")
+                reverse ? setVal(getVal() - val) : setVal(getVal() + val);
+            else if (op == "-=")
+                reverse ? setVal(getVal() + val) : setVal(getVal() - val);
+            else if (op == "^=")
+                setVal(getVal() ^ val);
+            else if (op == "<=>")
             {
-                string varName2 = expr->TextDigit()->getText();
-                bool isArray2 = expr->children.size() > 1;
-                setVal(val);
-                if (isArray2)
+                int current = getVal();
+                auto *expr = isArray ? ctx->expression(1) : ctx->expression(0);
+                if (expr && expr->TextDigit() != nullptr)
                 {
-                    int index2 = any_cast<int>(visit(expr->expression(0)));
-                    arrays[varName2][index2] = current;
-                }
-                else
-                {
-                    variables[varName2] = current;
+                    string varName2 = expr->TextDigit()->getText();
+                    bool isArray2 = expr->children.size() > 1;
+                    setVal(val);
+                    if (isArray2)
+                    {
+                        int index2 = any_cast<int>(visit(expr->expression(0)));
+                        arrays[varName2][index2] = current;
+                    }
+                    else
+                    {
+                        variables[varName2] = current;
+                    }
                 }
             }
-        }
+        };
 
+        assign();
+        bool b = reverse;
         checkDebug(ctx);
+        if (b != reverse)
+        {
+            assign();
+        }
         return nullptr;
     }
 
@@ -237,19 +323,21 @@ public:
 
         auto assertion = [&](int i, any ret)
         {
-            reverse? checkDebug(ctx->ifExpression()) : checkDebug(ctx->fiExpression());
+            reverse ? checkDebug(ctx->ifExpression()) : checkDebug(ctx->fiExpression());
             int condition2 = reverse ? any_cast<int>(visit(ctx->ifExpression()->expression())) : any_cast<int>(visit(ctx->fiExpression()->expression()));
-            if(!i) condition2 = !condition2;
+            if (!i)
+                condition2 = !condition2;
             if (condition2)
                 return ret;
-            else{
+            else
+            {
                 throw runtime_error("Test and assertion of an ifExpression must have the same value");
             }
         };
 
         bool iselse = ctx->elseExpression() != nullptr;
-        reverse? checkDebug(ctx->fiExpression()) : checkDebug(ctx->ifExpression());
-        int condition1 = reverse? any_cast<int>(visit(ctx->fiExpression()->expression())) : any_cast<int>(visit(ctx->ifExpression()->expression()));
+        reverse ? checkDebug(ctx->fiExpression()) : checkDebug(ctx->ifExpression());
+        int condition1 = reverse ? any_cast<int>(visit(ctx->fiExpression()->expression())) : any_cast<int>(visit(ctx->ifExpression()->expression()));
         if (condition1)
         {
             any case_true = ctx->ifExpression()->statements() != nullptr ? visit(ctx->ifExpression()->statements()) : any();
@@ -268,78 +356,98 @@ public:
         }
     }
 
-    virtual any visitIfExpression(janusParser::IfExpressionContext *ctx) override {
+    virtual any visitIfExpression(janusParser::IfExpressionContext *ctx) override
+    {
         checkDebug(ctx);
         return visitChildren(ctx);
     }
 
-    virtual any visitFiExpression(janusParser::FiExpressionContext *ctx) override {
+    virtual any visitFiExpression(janusParser::FiExpressionContext *ctx) override
+    {
         checkDebug(ctx);
         return visitChildren(ctx);
     }
 
-    virtual any visitElseExpression(janusParser::ElseExpressionContext *ctx) override {
+    virtual any visitElseExpression(janusParser::ElseExpressionContext *ctx) override
+    {
         checkDebug(ctx);
         return visitChildren(ctx);
     }
 
-    virtual any visitSkip(janusParser::SkipContext *ctx) override {
+    virtual any visitSkip(janusParser::SkipContext *ctx) override
+    {
         checkDebug(ctx);
         return visitChildren(ctx);
     }
-    
+
     virtual any visitLoopConstructor(janusParser::LoopConstructorContext *ctx) override
     {
 
-        auto evalFrom = [&]() {
-            if (reverse) {
+        auto evalFrom = [&]()
+        {
+            if (reverse)
+            {
                 return any_cast<int>(visit(ctx->untilExp()));
-            } else {
+            }
+            else
+            {
                 return any_cast<int>(visit(ctx->fromExp()));
             }
         };
 
-        auto evalUntil = [&]() {
-            if (reverse) {
+        auto evalUntil = [&]()
+        {
+            if (reverse)
+            {
                 return any_cast<int>(visit(ctx->fromExp()));
-            } else {
+            }
+            else
+            {
                 return any_cast<int>(visit(ctx->untilExp()));
             }
         };
 
         int assertion = evalFrom();
-        if(assertion)
+        if (assertion)
         {
-            do{
+            do
+            {
 
-            if(ctx->doExp()!=nullptr) visit(ctx->doExp());
-            int test = evalUntil();
-            if(test != 0) return any();
-            if(ctx->loopExp()!=nullptr) visit(ctx->loopExp());
-            assertion = evalFrom();
+                if (ctx->doExp() != nullptr)
+                    visit(ctx->doExp());
+                int test = evalUntil();
+                if (test != 0)
+                    return any();
+                if (ctx->loopExp() != nullptr)
+                    visit(ctx->loopExp());
+                assertion = evalFrom();
 
-            }while(assertion == 0);
+            } while (assertion == 0);
             throw runtime_error("assertion of a loopExpression must be false each time it re-evaluates");
-            
         }
-        else throw runtime_error("assertion of a loopExpression must be true when evaluated for the first time");
+        else
+            throw runtime_error("assertion of a loopExpression must be true when evaluated for the first time");
     }
 
-    virtual any visitFromExp(janusParser::FromExpContext *ctx) override {
+    virtual any visitFromExp(janusParser::FromExpContext *ctx) override
+    {
         checkDebug(ctx);
         return visit(ctx->expression());
     }
 
-    virtual any visitUntilExp(janusParser::UntilExpContext *ctx) override {
+    virtual any visitUntilExp(janusParser::UntilExpContext *ctx) override
+    {
         checkDebug(ctx);
         return visit(ctx->expression());
     }
 
-    virtual any visitDoExp(janusParser::DoExpContext *ctx) override {
+    virtual any visitDoExp(janusParser::DoExpContext *ctx) override
+    {
         return visitChildren(ctx);
     }
 
-    virtual any visitLoopExp(janusParser::LoopExpContext *ctx) override {
+    virtual any visitLoopExp(janusParser::LoopExpContext *ctx) override
+    {
         checkDebug(ctx);
         return visitChildren(ctx);
     }
@@ -349,43 +457,52 @@ public:
         checkDebug(ctx);
         string type = ctx->call()->getText();
         string name = ctx->functionName()->getText();
-        if(!procedures.contains(name)) throw runtime_error("no procedure with name: " + name);
-        if(type=="call") visit(procedures[name]);
-        else{
-            bool r=reverse;
+        if (!procedures.contains(name))
+            throw runtime_error("no procedure with name: " + name);
+        if (type == "call")
+            visit(procedures[name]);
+        else
+        {
+            bool r = reverse;
             reverse = !reverse;
             visit(procedures[name]);
-            reverse=r;
+            reverse = r;
         }
         return any();
     }
 
     void visitMain(string main)
     {
-        if(main=="") main = "main";
+        if (main == "")
+            main = "main";
         procedures.contains(main) ? visit(procedures[main]) : throw runtime_error("No procedure with name: " + main);
-
     }
 
-    void printVariables(size_t line=0,size_t it=0, string value="")
+    void printVariables(size_t line = 0, size_t it = 0, string value = "")
     {
-        cout<< "\033[u\033[0J";
-        if(line) cout << "\n[DEBUG BREAKPOINT: LINE " << line << " OPERATION: " + value + " ITERATION: " << it << " ] (Press ENTER for next step) " <<endl;
-        else cout<<"\n=============| END OF PROGRAM |==============";
+        cout << "\033[u\033[0J";
+        if (line)
+            cout << "\n[DEBUG BREAKPOINT: LINE " << line << " OPERATION: " + value + " ITERATION: " << it << " ] (Press ENTER for next step) " << endl;
+        else
+            cout << "\n=============| END OF PROGRAM |==============";
 
-        cout<<"\n=============|   VARIABLES    |=============="<<endl;
+        cout << "\n=============|   VARIABLES    |==============" << endl;
 
-        for(auto &[name, val] : variables){cout<<name<<" = "<<val<<endl;}
-        for(auto &[name, vec] : arrays)
+        for (auto &[name, val] : variables)
         {
-            cout<<name<<"["<<vec.size()<<"] = [ ";
+            cout << name << " = " << val << endl;
+        }
+        for (auto &[name, vec] : arrays)
+        {
+            cout << name << "[" << vec.size() << "] = [ ";
             for (auto i = 0; i < vec.size(); i++)
             {
-                cout<<vec[i]<<" ";
+                cout << vec[i] << " ";
             }
-            cout<<"]"<<endl;
+            cout << "]" << endl;
         }
-        cout<<"=============================================\n"<<endl;
+        cout << "=============================================\n"
+             << endl;
     }
 };
 
@@ -405,30 +522,40 @@ int main(int argc, const char *argv[])
     }
 
     map<size_t, size_t> debuglines;
-    string main="";
-    for(int i=2;i<argc;i++){
-        if(string(argv[i])=="-m"){
-            if ((i + 1 < argc) && (string(argv[i+1]) != "-d")) {
+    string main = "";
+    for (int i = 2; i < argc; i++)
+    {
+        if (string(argv[i]) == "-m")
+        {
+            if ((i + 1 < argc) && (string(argv[i + 1]) != "-d"))
+            {
                 main = argv[i + 1];
-            } else {
-                cerr << "-m requires the name of the main function afterwards!"<<endl;
+            }
+            else
+            {
+                cerr << "-m requires the name of the main function afterwards!" << endl;
                 return 1;
             }
         }
-        else if(string(argv[i])=="-d"){
-            while((i + 1 < argc) && (string(argv[i+1]) != "-m")) {
-                try{
-                debuglines.insert({stoul(argv[i + 1]),0});
-                i++;}
-                catch(const invalid_argument &){
-                    cerr << "non-valid value for -d: " << argv[i+1]<<endl;
+        else if (string(argv[i]) == "-d")
+        {
+            while ((i + 1 < argc) && (string(argv[i + 1]) != "-m"))
+            {
+                try
+                {
+                    debuglines.insert({stoul(argv[i + 1]), 0});
+                    i++;
+                }
+                catch (const invalid_argument &)
+                {
+                    cerr << "non-valid value for -d: " << argv[i + 1] << endl;
                     return 1;
                 }
             }
         }
     }
 
-    cout<<"\033[s";
+    cout << "\033[s";
 
     antlr4::ANTLRInputStream input(stream);
     janusLexer lexer(&input);
