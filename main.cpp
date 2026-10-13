@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <any>
+#include <tuple>
+#include <format>
 #include <stdexcept>
 
 #include "antlr4-runtime.h"
@@ -13,174 +15,100 @@
 
 using namespace std;
 
-class JanusInterpreter : public janusBaseVisitor
-{
-private:
-    bool reverse = false;
-    map<size_t, size_t> debuglines;
+using Label = size_t;
 
-public:
+enum class AssignmentOp
+{
+    ADD,
+    SUB,
+    XOR,
+    SWAP
+};
+
+enum class BlockType
+{
+    START,
+    STOP,
+    ASS_VAR,
+    ASS_ARR,
+    SWAP,
+    SKIP,
+    CALL,
+    UNCALL,
+    IF_HEAD,
+    FI_HEAD,
+    FROM_HEAD,
+    UNTIL_HEAD
+};
+
+struct Block
+{
+    Label id;
+    BlockType type;
+
+    string varName;
+    AssignmentOp op;
+    janusParser::ExpressionContext *expr1 = nullptr;
+    janusParser::ExpressionContext *expr2 = nullptr;
+    string procedurename;
+    janusParser::ExpressionContext *condExpr = nullptr;
+};
+
+enum class StackItemType
+{
+    CALL,
+    UNCALL,
+    IF_TRUE,
+    IF_FALSE,
+    LOOP1,
+    LOOP2
+} ;
+
+struct StackItem
+{
+    StackItemType type;
+    Label l1;
+    Label l2;
+    Label s1;
+    Label s2;
+};
+
+struct ProgramCFG
+{
     map<string, int> variables;
     map<string, vector<int>> arrays;
-    map<string, janusParser::FunctionContext *> procedures;
 
-    JanusInterpreter(map<size_t, size_t> d) : debuglines(d) {}
+    map<Label, Block> blocks;
+    map<Label, vector<Label>> forwardFlow;
+    map<Label, vector<Label>> backwardFlow;
 
-    void checkDebug(antlr4::ParserRuleContext *ctx)
+    map<string, Label> procedureEntry;
+    map<string, Label> procedureExit;
+
+    map<string, Label> reverseprocedureEntry;
+    map<string, Label> reverseprocedureExit;
+
+    void addEdge(Label u, Label v)
     {
-        if (ctx && ctx->getStart())
-        {
-            size_t line = ctx->getStart()->getLine();
-            string value = ctx->getText();
-
-            if (auto ifctx = dynamic_cast<janusParser::IfExpressionContext *>(ctx))
-            {
-                if (ifctx->expression())
-                    value = "if " + ifctx->expression()->getText();
-            }
-            else if (dynamic_cast<janusParser::DoExpContext *>(ctx))
-            {
-                value = "do";
-            }
-            else if (dynamic_cast<janusParser::LoopExpContext *>(ctx))
-            {
-                value = "loop";
-            }
-            else if (ctx->getStart()->getText() == "else")
-            {
-                value = "else";
-            }
-
-            if (debuglines.contains(line))
-            {
-                printVariables(line, ++debuglines[line], value);
-                string input;
-                getline(cin, input);
-                if (input == "i")
-                {
-                    reverse = !reverse;
-                }
-            }
-        }
+        forwardFlow[u].push_back(v);
+        backwardFlow[v].push_back(u);
     }
+};
 
-    virtual any visitVariables(janusParser::VariablesContext *ctx) override
-    {
-        if (ctx->variableName())
-        {
-            string varName = ctx->variableName()->getText();
-            if (ctx->Digit())
-            {
-                int size = stoi(ctx->Digit()->getText());
-                arrays[varName] = vector<int>(size, 0);
-            }
-            else
-            {
-                variables[varName] = 0;
-            }
-        }
-        checkDebug(ctx);
-        return visitChildren(ctx);
-    }
+class ReversibleJanusInterpreter
+{
+private:
+    ProgramCFG cfg;
+    Label l1 = 0; // last executed block
+    Label l2 = 0; // next block to be executed
+    vector<StackItem> pi;
 
-    virtual any visitFunctions(janusParser::FunctionsContext *ctx) override
-    {
-        string procName = ctx->function()->functionName()->getText();
-        if (procedures.contains(procName))
-            throw runtime_error("each procedure must have a different name");
-        else
-            procedures[procName] = ctx->function();
-        if (ctx->functions() != nullptr)
-            return visit(ctx->functions());
-        else
-            return any();
-    }
+public:
+    ReversibleJanusInterpreter(ProgramCFG pCFG, Label startL1, Label startL2) : cfg(move(pCFG)), l1(startL1), l2(startL2) {}
 
-    void visitNextStatement(janusParser::StatementsContext *ctx)
-    {
-        if (!ctx)return;
-
-        janusParser::StatementsContext *stmnt = ctx;
-
-        while (stmnt != nullptr)
-        {
-            auto *parent = dynamic_cast<janusParser::StatementsContext *>(stmnt->parent);
-            if (!parent)
-            {
-                return;
-            }
-            if (!reverse)
-            {
-                if (parent->statements(0) == stmnt)
-                {
-                    visit(parent->statements(1));
-                    return;
-                }
-            }
-            else
-            {
-                if (parent->statements(1) == stmnt)
-                {
-                    visit(parent->statements(0));
-                    return;
-                }
-            }
-            stmnt = parent;
-        }
-
-        return;
-    }
-
-    virtual any visitStatements(janusParser::StatementsContext *ctx) override
-    {
-        if (ctx->assignmentExpression() != nullptr)
-        {
-            visit(ctx->assignmentExpression());
-            visitNextStatement(ctx);
-            return any();
-        }
-        else if (ctx->ifConstructor() != nullptr)
-        {
-            visit(ctx->ifConstructor());
-            visitNextStatement(ctx);
-            return any();
-        }
-        else if (ctx->loopConstructor() != nullptr)
-        {
-            visit(ctx->loopConstructor());
-            visitNextStatement(ctx);
-            return any();
-        }
-        else if (ctx->functionCall() != nullptr)
-        {
-            visit(ctx->functionCall());
-            visitNextStatement(ctx);
-            return any();
-        }
-        else if (ctx->skip() != nullptr)
-        {
-            visit(ctx->skip());
-            visitNextStatement(ctx);
-            return any();
-        }
-        else
-        {
-            if (reverse)
-            {
-                visit(ctx->statements(1));
-                return any();
-            }
-            else
-            {
-                visit(ctx->statements(0));
-                return any();
-            }
-        }
-    }
-
-    virtual any visitExpression(janusParser::ExpressionContext *ctx) override
-    {
-
+    int evalExpr(janusParser::ExpressionContext *ctx){
+        if (!ctx)
+            return 0;
         if (ctx->Digit())
         {
             return stoi(ctx->Digit()->getText());
@@ -190,23 +118,19 @@ public:
             string name = ctx->TextDigit()->getText();
             if (!ctx->expression().empty())
             {
-                int index = any_cast<int>(visit(ctx->expression(0)));
-                if (arrays.contains(name) && index >= 0 && index < (int)arrays[name].size())
+                int index = evalExpr(ctx->expression(0));
+                if (cfg.arrays.contains(name) && index >= 0 && index < (int)cfg.arrays[name].size())
                 {
-                    return arrays[name][index];
+                    return cfg.arrays[name][index];
                 }
                 return 0;
             }
-            return variables.contains(name) ? variables[name] : 0;
-        }
-        else if (ctx->expression().size() == 1 && ctx->children.size() == 3)
-        {
-            return visit(ctx->expression(0));
+            return cfg.variables.contains(name) ? cfg.variables[name] : 0;
         }
         else if (ctx->expression().size() == 2 && ctx->operator_())
         {
-            int a = any_cast<int>(visit(ctx->expression(0)));
-            int b = any_cast<int>(visit(ctx->expression(1)));
+            int a = evalExpr(ctx->expression(0));
+            int b = evalExpr(ctx->expression(1));
             string op = ctx->operator_()->getText();
 
             if (op == "+")
@@ -242,267 +166,721 @@ public:
             if (op == "||")
                 return (a || b) ? 1 : 0;
         }
-
         return 0;
     }
 
-    virtual any visitAssignmentExpression(janusParser::AssignmentExpressionContext *ctx) override
-    {
-        string varName = ctx->variableName()->getText();
-        string op = ctx->assignmentOperator()->getText();
-
-        bool isArray = ctx->expression().size() > 1;
-        int index = 0;
-        int val = 0;
-
-        if (isArray)
+    void applyOp(string var, AssignmentOp op, int val, int idx = -1){
+        if (idx >= 0)
         {
-            index = any_cast<int>(visit(ctx->expression(0)));
-            val = any_cast<int>(visit(ctx->expression(1)));
+            if (op == AssignmentOp::ADD)
+                cfg.arrays[var][idx] += val;
+            else if (op == AssignmentOp::SUB)
+                cfg.arrays[var][idx] -= val;
+            else if (op == AssignmentOp::XOR)
+                cfg.arrays[var][idx] ^= val;
         }
         else
         {
-            val = any_cast<int>(visit(ctx->expression(0)));
+            if (op == AssignmentOp::ADD)
+                cfg.variables[var] += val;
+            else if (op == AssignmentOp::SUB)
+                cfg.variables[var] -= val;
+            else if (op == AssignmentOp::XOR)
+                cfg.variables[var] ^= val;
         }
+    }
 
-        auto getVal = [&]()
+    AssignmentOp invertOp(AssignmentOp op){
+        switch (op)
         {
-            return isArray ? arrays[varName][index] : variables[varName];
-        };
+        case AssignmentOp::ADD:
+            return AssignmentOp::SUB;
+        case AssignmentOp::SUB:
+            return AssignmentOp::ADD;
+        case AssignmentOp::XOR:
+            return AssignmentOp::XOR;
+        case AssignmentOp::SWAP:
+            return AssignmentOp::SWAP;
+        }
+        return op;
+    }
 
-        auto setVal = [&](int v)
-        {
-            if (isArray)
-                arrays[varName][index] = v;
-            else
-                variables[varName] = v;
-        };
+    bool stepForward()
+    {
+        if (!cfg.blocks.contains(l2)) return false;
+        const Block &b = cfg.blocks[l2];
 
-        auto assign = [&]()
+        Label l3 = 0;
+        if (b.type != BlockType::STOP && !cfg.forwardFlow[l2].empty()) l3 = cfg.forwardFlow[l2][0];
+
+        switch (b.type)
         {
-            if (op == "+=")
-                reverse ? setVal(getVal() - val) : setVal(getVal() + val);
-            else if (op == "-=")
-                reverse ? setVal(getVal() + val) : setVal(getVal() - val);
-            else if (op == "^=")
-                setVal(getVal() ^ val);
-            else if (op == "<=>")
+        case BlockType::ASS_VAR:
+        {
+            int val = evalExpr(b.expr1);
+            if (cfg.variables.contains(b.varName))
             {
-                int current = getVal();
-                auto *expr = isArray ? ctx->expression(1) : ctx->expression(0);
-                if (expr && expr->TextDigit() != nullptr)
+                applyOp(b.varName, b.op, val);
+            }
+            else throw runtime_error(format("variable {} not found", b.varName));
+            l1 = l2;
+            l2 = l3;
+            break;
+        }
+        case BlockType::ASS_ARR:
+        {
+            int idx = evalExpr(b.expr1);
+            int val = evalExpr(b.expr2);
+            if (cfg.arrays.contains(b.varName) && idx >= 0 && idx < cfg.arrays[b.varName].size())
+            {
+                applyOp(b.varName, b.op, val, idx);
+            }
+            else
+                throw runtime_error(format("array {} not found or index error", b.varName));
+            l1 = l2;
+            l2 = l3;
+            break;
+        }
+        case BlockType::SWAP:
+        {
+            bool isArr1 = (b.expr2 != nullptr);
+            int val = evalExpr(isArr1 ? b.expr2 : b.expr1);
+            int index1 = isArr1 ? evalExpr(b.expr1) : 0;
+            int current = isArr1 ? cfg.arrays[b.varName][index1] : cfg.variables[b.varName];
+            auto expr = isArr1 ? b.expr2 : b.expr1;
+            if (expr->TextDigit() != nullptr)
+            {
+                string varName2 = expr->TextDigit()->getText();
+                bool isArr2 = !expr->expression().empty();
+
+                if (isArr1)
                 {
-                    string varName2 = expr->TextDigit()->getText();
-                    bool isArray2 = expr->children.size() > 1;
-                    setVal(val);
-                    if (isArray2)
-                    {
-                        int index2 = any_cast<int>(visit(expr->expression(0)));
-                        arrays[varName2][index2] = current;
-                    }
-                    else
-                    {
-                        variables[varName2] = current;
-                    }
+                    cfg.arrays[b.varName][index1] = val;
+                }
+                else
+                {
+                    cfg.variables[b.varName] = val;
+                }
+
+                if (isArr2)
+                {
+                    int index2 = evalExpr(expr->expression(0));
+                    cfg.arrays[varName2][index2] = current;
+                }
+                else
+                {
+                    cfg.variables[varName2] = current;
                 }
             }
-        };
 
-        assign();
-        bool b = reverse;
-        checkDebug(ctx);
-        if (b != reverse)
+            l1 = l2;
+            l2 = l3;
+            break;
+        }
+        case BlockType::SKIP:
         {
-            assign();
+            l1 = l2;
+            l2 = l3;
+            break;
+        }
+        case BlockType::CALL:
+        {
+            if (!cfg.procedureEntry.contains(b.procedurename))
+            {
+                throw runtime_error(format("unable to find procedure {}", b.procedurename));
+            }
+            Label entryLabel = cfg.procedureEntry[b.procedurename];
+            Label entryNext = cfg.forwardFlow[entryLabel][0];
+            pi.push_back({StackItemType::CALL, l2});
+            l1 = entryLabel;
+            l2 = entryNext;
+            break;
+        }
+        case BlockType::UNCALL:
+        {
+            if (!cfg.procedureEntry.contains(b.procedurename))
+            {
+                throw runtime_error(format("unable to find procedure {}", b.procedurename));
+            }
+            Label entryLabel = cfg.reverseprocedureEntry[b.procedurename];
+            Label entryNext = cfg.forwardFlow[entryLabel][0];
+            pi.push_back({StackItemType::UNCALL, l2});
+            l1 = entryLabel;
+            l2 = entryNext;
+            break;
+        }
+        case BlockType::START:
+        {
+            l1 = l2;
+            l2 = l3;
+            break;
+        }
+        case BlockType::STOP:
+        {
+            if (pi.empty())
+                return false;
+            StackItem top = pi.back();
+            pi.pop_back();
+            l1 = top.l1;
+            l2 = cfg.forwardFlow[l1][0];
+            break;
+        }
+        case BlockType::IF_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            if(cond){
+                pi.push_back({StackItemType::IF_TRUE, l2});
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];
+            }else{
+                pi.push_back({StackItemType::IF_FALSE, l2});
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][1];
+            }
+            break;
+        }
+        case BlockType::FI_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            StackItem top = pi.back();
+            pi.pop_back();
+            if(cond){
+                if(top.type != StackItemType::IF_TRUE) throw runtime_error("condition and assertion must have the same value");
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];
+            }else{
+                if(top.type != StackItemType::IF_FALSE) throw runtime_error("condition and assertion must have the same value");
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];
+            }
+            break;
+        }
+        case BlockType::FROM_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            if(cond)
+            {
+                pi.push_back({StackItemType::LOOP1, l2});
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];
+            }
+            else{
+                StackItem top = pi.back();
+                pi.pop_back();
+                if(top.type == StackItemType::LOOP2)
+                {
+                pi.push_back({StackItemType::LOOP1, l2});
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];}
+                else throw runtime_error("first evaluation of loop condition must be true");
+            }
+            break;
+        }
+        case BlockType::UNTIL_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            StackItem top = pi.back();
+            pi.pop_back();
+            if(cond && top.type == StackItemType::LOOP1){
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][1];
+            }
+            else if(!cond && top.type == StackItemType::LOOP1){
+                pi.push_back({StackItemType::LOOP2, l2});
+                l1 = l2;
+                l2 = cfg.forwardFlow[l2][0];
+            }
+            else throw runtime_error("loop stack error");
+            break;
+        }
+        }
+        return true;
+    }
+
+    bool stepBackward()
+    {
+        if (!cfg.blocks.contains(l1)) return false;
+        const Block &b = cfg.blocks[l1];
+
+        Label prevL = 0;
+        if (b.type != BlockType::START && !cfg.backwardFlow[l1].empty()) prevL = cfg.backwardFlow[l1][0];
+
+        switch (b.type)
+        {
+        case BlockType::ASS_VAR:
+        {
+            int val = evalExpr(b.expr1);
+            if (cfg.variables.contains(b.varName))
+            {
+                applyOp(b.varName, invertOp(b.op), val);
+            }
+            else throw runtime_error(format("variable {} not found", b.varName));
+            l2 = l1;
+            l1 = prevL;
+            break;
+        }
+        case BlockType::ASS_ARR:
+        {
+            int idx = evalExpr(b.expr1);
+            int val = evalExpr(b.expr2);
+            if (cfg.arrays.contains(b.varName) && idx >= 0 && idx < cfg.arrays[b.varName].size())
+            {
+                applyOp(b.varName, invertOp(b.op), val, idx);
+            }
+            else throw runtime_error(format("array {} not found or index error", b.varName));
+            l2 = l1;
+            l1 = prevL;
+            break;
+        }
+        case BlockType::SWAP:
+        {
+            bool isArr1 = (b.expr2 != nullptr);
+            int val = evalExpr(isArr1 ? b.expr2 : b.expr1);
+            int index1 = isArr1 ? evalExpr(b.expr1) : 0;
+            int current = isArr1 ? cfg.arrays[b.varName][index1] : cfg.variables[b.varName];
+            auto expr = isArr1 ? b.expr2 : b.expr1;
+            if (expr->TextDigit() != nullptr)
+            {
+                string varName2 = expr->TextDigit()->getText();
+                bool isArr2 = !expr->expression().empty();
+
+                if (isArr1)
+                {
+                    cfg.arrays[b.varName][index1] = val;
+                }
+                else
+                {
+                    cfg.variables[b.varName] = val;
+                }
+
+                if (isArr2)
+                {
+                    int index2 = evalExpr(expr->expression(0));
+                    cfg.arrays[varName2][index2] = current;
+                }
+                else
+                {
+                    cfg.variables[varName2] = current;
+                }
+            }
+
+            l2 = l1;
+            l1 = prevL;
+            break;
+        }
+        case BlockType::SKIP:
+        {
+            l2 = l1;
+            l1 = prevL;
+            break;
+        }
+        case BlockType::CALL:
+        {
+            if (!cfg.procedureExit.contains(b.procedurename))
+            {
+                throw runtime_error(format("unable to find procedure {}", b.procedurename));
+            }
+            Label exitLabel = cfg.procedureExit[b.procedurename];
+            Label NextLabel = cfg.backwardFlow[exitLabel][0];
+            pi.push_back({StackItemType::CALL, l1});
+            l1 = NextLabel;
+            l2 = exitLabel;
+            break;
+        }
+        case BlockType::UNCALL:
+        {
+            if (!cfg.reverseprocedureExit.contains(b.procedurename))
+            {
+                throw runtime_error(format("unable to find procedure {}", b.procedurename));
+            }
+            Label entryLabel = cfg.reverseprocedureExit[b.procedurename];
+            Label NextLabel = cfg.backwardFlow[entryLabel][0];
+            pi.push_back({StackItemType::UNCALL, l1});
+            l1 = NextLabel;
+            l2 = entryLabel;
+            break;
+        }
+        case BlockType::START:
+        {
+            if (pi.empty())
+                return false;
+            StackItem top = pi.back();
+            pi.pop_back();
+            l2 = top.l1;
+            l1 = cfg.backwardFlow[l2][0];
+            break;
+        }
+        case BlockType::STOP:
+        {
+            l2 = l1;
+            l1 = prevL;
+            break;
+        }
+        case BlockType::IF_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            StackItem top = pi.back();
+            pi.pop_back();
+            if(cond){
+                if(top.type != StackItemType::IF_TRUE) throw runtime_error("condition and assertion must have the same value");
+                l2 = l1;
+                l1 = cfg.backwardFlow[l2][0];
+            }else{
+                if(top.type != StackItemType::IF_FALSE) throw runtime_error("condition and assertion must have the same value");
+                l2 = l1;
+                l1 = cfg.backwardFlow[l2][0];
+            }
+            break;
+        }
+        case BlockType::FI_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            if(cond){
+                pi.push_back({StackItemType::IF_TRUE, l2});
+                l2 = l1;
+                l1 = cfg.backwardFlow[l2][0];
+            }else{
+                pi.push_back({StackItemType::IF_FALSE, l2});
+                l2 = l1;
+                l1 = cfg.backwardFlow[l2][1];
+            }
+            break;
+        }
+        case BlockType::FROM_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            StackItem top = pi.back();
+            pi.pop_back();
+            if(cond && top.type == StackItemType::LOOP1){
+                l2 = l1;
+                l1 = cfg.backwardFlow[l1][1];
+            }
+            else if(!cond && top.type == StackItemType::LOOP1){
+                pi.push_back({StackItemType::LOOP2, l1});
+                l2 = l1;
+                l1 = cfg.backwardFlow[l1][0];
+            }
+            else throw runtime_error("loop stack error");
+            break;
+        }
+        case BlockType::UNTIL_HEAD:
+        {
+            bool cond = evalExpr(b.condExpr);
+            if(cond)
+            {
+                pi.push_back({StackItemType::LOOP1, l1});
+                l2 = l1;
+                l1 = cfg.backwardFlow[l1][0];
+            }
+            else{
+                StackItem top = pi.back();
+                pi.pop_back();
+                if(top.type == StackItemType::LOOP2)
+                {
+                pi.push_back({StackItemType::LOOP1, l1});
+                l2 = l1;
+                l1 = cfg.backwardFlow[l1][0];}
+                else throw runtime_error("first evaluation of loop condition must be true");
+            }
+            break;
+        }
+        }
+        return true;
+    }
+
+    void printState(string m="")
+    {
+        cout << "\033[u\033[0J";
+        cout << "\n--- STATE: < l1=" << l1 << ", l2=" << l2 << " > ---\n";
+        for (auto &[var, val] : cfg.variables)
+        {
+            cout << var << " = " << val << "\n";
+        }
+        if(m != "") cout<< m << endl;
+    }
+};
+
+class CFGBuilder : public janusBaseVisitor
+{
+private:
+    ProgramCFG cfg;
+    Label nextLabel = 1;
+
+    Label createLabel()
+    {
+        return nextLabel++;
+    }
+
+public:
+    ProgramCFG getCFG() { return cfg; }
+
+    virtual any visitVariables(janusParser::VariablesContext *ctx) override
+    {
+        if (ctx->variableName())
+        {
+            string varName = ctx->variableName()->getText();
+            if (ctx->Digit())
+            {
+                int size = stoi(ctx->Digit()->getText());
+                cfg.arrays[varName] = vector<int>(size, 0);
+            }
+            else
+            {
+                cfg.variables[varName] = 0;
+            }
+        }
+        return visitChildren(ctx);
+    }
+
+    virtual any visitFunction(janusParser::FunctionContext *ctx) override
+    {
+        string procName = ctx->functionName()->getText();
+
+        Label entryL = createLabel();
+        cfg.blocks[entryL] = Block{entryL, BlockType::START, "", AssignmentOp::ADD, nullptr, nullptr, procName, nullptr};
+        cfg.procedureEntry[procName] = entryL;
+
+        Label reverseentryL = createLabel();
+        cfg.blocks[reverseentryL] = Block{reverseentryL, BlockType::START, "", AssignmentOp::ADD, nullptr, nullptr, procName, nullptr};
+        cfg.reverseprocedureEntry[procName] = reverseentryL;
+
+        Label exitL = createLabel();
+        cfg.blocks[exitL] = Block{exitL, BlockType::STOP, "", AssignmentOp::ADD, nullptr, nullptr, procName};
+        cfg.procedureExit[procName] = exitL;
+
+        Label reverseexitL = createLabel();
+        cfg.blocks[reverseexitL] = Block{reverseexitL, BlockType::STOP, "", AssignmentOp::ADD, nullptr, nullptr, procName};
+        cfg.reverseprocedureExit[procName] = reverseexitL;
+
+        if (ctx->statements())
+        {
+            auto [firstL, lastL, reversefirstL, reverselastL] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->statements()));
+            cfg.addEdge(entryL, firstL);
+            cfg.addEdge(lastL, exitL);
+
+            cfg.addEdge(reverseentryL, reversefirstL);
+            cfg.addEdge(reverselastL, reverseexitL);
+        }
+        else
+        {
+            cfg.addEdge(entryL, exitL);
+            cfg.addEdge(reverseentryL, reverseexitL);
         }
         return nullptr;
     }
 
-    virtual any visitIfConstructor(janusParser::IfConstructorContext *ctx) override
+    virtual any visitStatements(janusParser::StatementsContext *ctx) override
     {
-
-        auto assertion = [&](int i, any ret)
+        if (ctx->assignmentExpression())
+            return visit(ctx->assignmentExpression());
+        else if (ctx->ifConstructor())
+            return visit(ctx->ifConstructor());
+        else if (ctx->loopConstructor())
+            return visit(ctx->loopConstructor());
+        else if (ctx->functionCall())
+            return visit(ctx->functionCall());
+        else if (ctx->skip())
+            return visit(ctx->skip());
+        else if (ctx->statements().size() == 2)
         {
-            reverse ? checkDebug(ctx->ifExpression()) : checkDebug(ctx->fiExpression());
-            int condition2 = reverse ? any_cast<int>(visit(ctx->ifExpression()->expression())) : any_cast<int>(visit(ctx->fiExpression()->expression()));
-            if (!i)
-                condition2 = !condition2;
-            if (condition2)
-                return ret;
-            else
-            {
-                throw runtime_error("Test and assertion of an ifExpression must have the same value");
-            }
-        };
+            auto [fEntry1, fExit1, rEntry1, rExit1] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->statements(0)));
+            auto [fEntry2, fExit2, rEntry2, rExit2] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->statements(1)));
 
-        bool iselse = ctx->elseExpression() != nullptr;
-        reverse ? checkDebug(ctx->fiExpression()) : checkDebug(ctx->ifExpression());
-        int condition1 = reverse ? any_cast<int>(visit(ctx->fiExpression()->expression())) : any_cast<int>(visit(ctx->ifExpression()->expression()));
-        if (condition1)
+            cfg.addEdge(fExit1, fEntry2);
+            cfg.addEdge(rExit2, rEntry1);
+
+            return make_tuple(fEntry1, fExit2, rEntry2, rExit1);
+        }
+        return make_tuple((Label)0, (Label)0, (Label)0, (Label)0);
+    }
+
+    virtual any visitAssignmentExpression(janusParser::AssignmentExpressionContext *ctx) override
+    {
+        Label l = createLabel();
+        Block b;
+        b.id = l;
+        b.varName = ctx->variableName()->getText();
+
+        string op = ctx->assignmentOperator()->getText();
+        if (op == "+=")
+            b.op = AssignmentOp::ADD;
+        else if (op == "-=")
+            b.op = AssignmentOp::SUB;
+        else if (op == "^=")
+            b.op = AssignmentOp::XOR;
+        else if (op == "<=>")
+            b.op = AssignmentOp::SWAP;
+
+        if (ctx->expression().size() == 2)
         {
-            any case_true = ctx->ifExpression()->statements() != nullptr ? visit(ctx->ifExpression()->statements()) : any();
-            return assertion(1, case_true);
+            b.type = (b.op == AssignmentOp::SWAP) ? BlockType::SWAP : BlockType::ASS_ARR;
+            b.expr1 = ctx->expression(0);
+            b.expr2 = ctx->expression(1);
         }
         else
         {
-            if (iselse)
-            {
-                checkDebug(ctx->elseExpression());
-                any case_false = ctx->elseExpression()->statements() != nullptr ? visit(ctx->elseExpression()->statements()) : any();
-                return assertion(0, case_false);
-            }
-            else
-                return assertion(0, any());
+            b.type = (b.op == AssignmentOp::SWAP) ? BlockType::SWAP : BlockType::ASS_VAR;
+            b.expr1 = ctx->expression(0);
         }
+
+        cfg.blocks[l] = b;
+
+        Label rl = createLabel();
+        Block rb = b;
+        rb.id = rl;
+        if (rb.op == AssignmentOp::ADD)
+            rb.op = AssignmentOp::SUB;
+        else if (rb.op == AssignmentOp::SUB)
+            rb.op = AssignmentOp::ADD;
+        cfg.blocks[rl] = rb;
+
+        return make_tuple(l, l, rl, rl);
     }
 
-    virtual any visitIfExpression(janusParser::IfExpressionContext *ctx) override
+    virtual any visitIfConstructor(janusParser::IfConstructorContext *ctx) override
     {
-        checkDebug(ctx);
-        return visitChildren(ctx);
-    }
+        Label lif = createLabel();
+        Block bif;
+        bif.id = lif;
+        bif.type = BlockType::IF_HEAD;
+        bif.condExpr = ctx->ifExpression()->expression();
+        cfg.blocks[lif] = bif;
 
-    virtual any visitFiExpression(janusParser::FiExpressionContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visitChildren(ctx);
-    }
+        Label lfi = createLabel();
+        Block bfi;
+        bfi.id = lfi;
+        bfi.type = BlockType::FI_HEAD;
+        bfi.condExpr = ctx->fiExpression()->expression();
+        cfg.blocks[lfi] = bfi;
 
-    virtual any visitElseExpression(janusParser::ElseExpressionContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visitChildren(ctx);
-    }
+        Label rlif = createLabel();
+        Block rbif;
+        rbif.id = rlif;
+        rbif.type = BlockType::IF_HEAD;
+        rbif.condExpr = ctx->fiExpression()->expression();
+        cfg.blocks[rlif] = rbif;
 
-    virtual any visitSkip(janusParser::SkipContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visitChildren(ctx);
+        Label rlfi = createLabel();
+        Block rbfi;
+        rbfi.id = rlfi;
+        rbfi.type = BlockType::FI_HEAD;
+        rbfi.condExpr = ctx->ifExpression()->expression();
+        cfg.blocks[rlfi] = rbfi;
+
+        auto [thenFEntry, thenFExit, thenREntry, thenRExit] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->ifExpression()->statements()));
+        cfg.addEdge(lif, thenFEntry);
+        cfg.addEdge(thenFExit, lfi);
+        cfg.addEdge(rlif, thenREntry);
+        cfg.addEdge(thenRExit, rlfi);
+
+        if (ctx->elseExpression())
+        {
+            auto [elseFEntry, elseFExit, elseREntry, elseRExit] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->elseExpression()->statements()));
+            cfg.addEdge(lif, elseFEntry);
+            cfg.addEdge(elseFExit, lfi);
+            cfg.addEdge(rlif, elseREntry);
+            cfg.addEdge(elseRExit, rlfi);
+        }
+        else
+        {
+            cfg.addEdge(lif, lfi);
+            cfg.addEdge(rlif, rlfi);
+        }
+
+        return make_tuple(lif, lfi, rlif, rlfi);
     }
 
     virtual any visitLoopConstructor(janusParser::LoopConstructorContext *ctx) override
     {
+        Label lfrom = createLabel();
+        Block bfrom;
+        bfrom.id = lfrom;
+        bfrom.type = BlockType::FROM_HEAD;
+        bfrom.condExpr = ctx->fromExp()->expression();
+        cfg.blocks[lfrom] = bfrom;
 
-        auto evalFrom = [&]()
+        Label lunt = createLabel();
+        Block bunt;
+        bunt.id = lunt;
+        bunt.type = BlockType::UNTIL_HEAD;
+        bunt.condExpr = ctx->untilExp()->expression();
+        cfg.blocks[lunt] = bunt;
+
+        Label rlfrom = createLabel();
+        Block rbfrom;
+        rbfrom.id = rlfrom;
+        rbfrom.type = BlockType::UNTIL_HEAD;
+        rbfrom.condExpr = ctx->fromExp()->expression();
+        cfg.blocks[rlfrom] = rbfrom;
+
+        Label rlunt = createLabel();
+        Block rbunt;
+        rbunt.id = rlunt;
+        rbunt.type = BlockType::FROM_HEAD;
+        rbunt.condExpr = ctx->untilExp()->expression();
+        cfg.blocks[rlunt] = rbunt;
+
+        if (ctx->doExp())
         {
-            if (reverse)
-            {
-                return any_cast<int>(visit(ctx->untilExp()));
-            }
-            else
-            {
-                return any_cast<int>(visit(ctx->fromExp()));
-            }
-        };
-
-        auto evalUntil = [&]()
-        {
-            if (reverse)
-            {
-                return any_cast<int>(visit(ctx->fromExp()));
-            }
-            else
-            {
-                return any_cast<int>(visit(ctx->untilExp()));
-            }
-        };
-
-        int assertion = evalFrom();
-        if (assertion)
-        {
-            do
-            {
-
-                if (ctx->doExp() != nullptr)
-                    visit(ctx->doExp());
-                int test = evalUntil();
-                if (test != 0)
-                    return any();
-                if (ctx->loopExp() != nullptr)
-                    visit(ctx->loopExp());
-                assertion = evalFrom();
-
-            } while (assertion == 0);
-            throw runtime_error("assertion of a loopExpression must be false each time it re-evaluates");
+            auto [dEntry, dExit, rdEntry, rdExit] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->doExp()->statements()));
+            cfg.addEdge(lfrom, dEntry);
+            cfg.addEdge(dExit, lunt);
+            cfg.addEdge(rlunt, rdEntry);
+            cfg.addEdge(rdExit, rlfrom);
         }
         else
-            throw runtime_error("assertion of a loopExpression must be true when evaluated for the first time");
-    }
+        {
+            cfg.addEdge(lfrom, lunt);
+            cfg.addEdge(rlunt, rlfrom);
+        }
 
-    virtual any visitFromExp(janusParser::FromExpContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visit(ctx->expression());
-    }
+        if (ctx->loopExp())
+        {
+            auto [lEntry, lExit, rlEntry, rlExit] = any_cast<tuple<Label, Label, Label, Label>>(visit(ctx->loopExp()->statements()));
+            cfg.addEdge(lunt, lEntry);
+            cfg.addEdge(lExit, lfrom);
+            cfg.addEdge(rlfrom, rlEntry);
+            cfg.addEdge(rlExit, rlunt);
+        }
+        else
+        {
+            cfg.addEdge(lunt, lfrom);
+            cfg.addEdge(rlfrom, rlunt);
+        }
 
-    virtual any visitUntilExp(janusParser::UntilExpContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visit(ctx->expression());
-    }
-
-    virtual any visitDoExp(janusParser::DoExpContext *ctx) override
-    {
-        return visitChildren(ctx);
-    }
-
-    virtual any visitLoopExp(janusParser::LoopExpContext *ctx) override
-    {
-        checkDebug(ctx);
-        return visitChildren(ctx);
+        return make_tuple(lfrom, lunt, rlunt, rlfrom);
     }
 
     virtual any visitFunctionCall(janusParser::FunctionCallContext *ctx) override
     {
-        checkDebug(ctx);
-        string type = ctx->call()->getText();
-        string name = ctx->functionName()->getText();
-        if (!procedures.contains(name))
-            throw runtime_error("no procedure with name: " + name);
-        if (type == "call")
-            visit(procedures[name]);
-        else
-        {
-            bool r = reverse;
-            reverse = !reverse;
-            visit(procedures[name]);
-            reverse = r;
-        }
-        return any();
+        Label l = createLabel();
+        Block b;
+        b.id = l;
+        string callType = ctx->call()->getText();
+        b.type = (callType == "call") ? BlockType::CALL : BlockType::UNCALL;
+        b.procedurename = ctx->functionName()->getText();
+        cfg.blocks[l] = b;
+
+        Label rl = createLabel();
+        Block rb = b;
+        rb.id = rl;
+        rb.type = (b.type == BlockType::CALL) ? BlockType::UNCALL : BlockType::CALL;
+        cfg.blocks[rl] = rb;
+
+        return make_tuple(l, l, rl, rl);
     }
 
-    void visitMain(string main)
+    virtual any visitSkip(janusParser::SkipContext *ctx) override
     {
-        if (main == "")
-            main = "main";
-        procedures.contains(main) ? visit(procedures[main]) : throw runtime_error("No procedure with name: " + main);
-    }
+        Label l = createLabel();
+        Block b{l, BlockType::SKIP};
+        cfg.blocks[l] = b;
 
-    void printVariables(size_t line = 0, size_t it = 0, string value = "")
-    {
-        cout << "\033[u\033[0J";
-        if (line)
-            cout << "\n[DEBUG BREAKPOINT: LINE " << line << " OPERATION: " + value + " ITERATION: " << it << " ] (Press ENTER for next step) " << endl;
-        else
-            cout << "\n=============| END OF PROGRAM |==============";
+        Label rl = createLabel();
+        Block rb{rl, BlockType::SKIP};
+        cfg.blocks[rl] = rb;
 
-        cout << "\n=============|   VARIABLES    |==============" << endl;
-
-        for (auto &[name, val] : variables)
-        {
-            cout << name << " = " << val << endl;
-        }
-        for (auto &[name, vec] : arrays)
-        {
-            cout << name << "[" << vec.size() << "] = [ ";
-            for (auto i = 0; i < vec.size(); i++)
-            {
-                cout << vec[i] << " ";
-            }
-            cout << "]" << endl;
-        }
-        cout << "=============================================\n"
-             << endl;
+        return make_tuple(l, l, rl, rl);
     }
 };
 
@@ -522,7 +900,7 @@ int main(int argc, const char *argv[])
     }
 
     map<size_t, size_t> debuglines;
-    string main = "";
+    string main = "main";
     for (int i = 2; i < argc; i++)
     {
         if (string(argv[i]) == "-m")
@@ -564,18 +942,45 @@ int main(int argc, const char *argv[])
 
     antlr4::tree::ParseTree *tree = parser.program();
 
-    JanusInterpreter interpreter(debuglines);
-    try
+    CFGBuilder builder;
+    builder.visit(tree);
+    ProgramCFG cfg = builder.getCFG();
+
+    Label startL1;
+    auto i = cfg.procedureEntry.find(main);
+    if (i != cfg.procedureEntry.end())
+        startL1 = i->second;
+    else
     {
-        interpreter.visit(tree);
-        interpreter.visitMain(main);
-        interpreter.printVariables();
-    }
-    catch (const runtime_error &e)
-    {
-        cerr << e.what() << endl;
+        cerr << "unable to find main procedure" << endl;
         return 1;
     }
+    Label startL2 = cfg.forwardFlow[startL1][0];
 
+    ReversibleJanusInterpreter interpreter(cfg, startL1, startL2);
+    cout << "Debugger avviato. [f = step forward, b = step backward, q = quit]\n";
+    string cmd;
+    try{
+    while (cout << "> " && cin >> cmd && cmd != "q")
+    {
+        if (cmd == "f")
+        {
+            if (!interpreter.stepForward())
+                interpreter.printState("Fine esecuzione in avanti");
+            else interpreter.printState();
+        }
+        else if (cmd == "b")
+        {
+            if (!interpreter.stepBackward())
+                interpreter.printState("Inizio programma raggiunto.");
+            else interpreter.printState();
+        }
+        
+    }
+    }
+    catch (const exception &e)
+    {
+        cerr << "Errore di esecuzione: " << e.what() << "\n";
+    }
     return 0;
 }

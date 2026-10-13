@@ -56,7 +56,6 @@ loopExp : 'loop' statements
 expression : Digit
            | TextDigit ( '[' expression ']' )?
            | expression operator expression
-           | '(' expression ')'
            ;
 
 functionCall : call functionName

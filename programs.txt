@@ -68,3 +68,30 @@ procedure main
 procedure main_bw
     a+=7
     uncall main
+
+-------------------------------------------------------------------------
+a
+b
+c
+
+procedure main
+    a += 2
+    b += 4
+    if c = 1 then
+        a += 1
+    else
+        a -= 1
+    fi c = 1
+    b -= a
+    b <=> c
+    if c != 0 then
+        b -= 1
+    fi c = 0
+    a += c
+    skip
+
+procedure altro
+    a += 3
+    c -= 4
+    call main
+    a <=> b
