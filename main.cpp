@@ -95,12 +95,41 @@ struct ProgramCFG
     }
 };
 
+string TypeToString(BlockType type) {
+    switch (type) {
+        case BlockType::START:return "START";
+        case BlockType::STOP:return "STOP";
+        case BlockType::ASS_VAR:return "ASS_VAR";
+        case BlockType::SWAP:return "SWAP";
+        case BlockType::SKIP:return "SKIP";
+        case BlockType::CALL:return "CALL";
+        case BlockType::UNCALL:return "UNCALL";
+        case BlockType::IF_HEAD:return "IF";
+        case BlockType::FI_HEAD:return "FI";
+        case BlockType::FROM_HEAD:return "FROM";
+        case BlockType::UNTIL_HEAD:return "UNTIL";
+    }
+    return "UNKNOWN";
+}
+
+string TypeToString(StackItemType type) {
+    switch (type) {
+        case StackItemType::CALL:return "CALL";
+        case StackItemType::UNCALL:return "UNCALL";
+        case StackItemType::IF_TRUE:return "THEN";
+        case StackItemType::IF_FALSE:return "ELSE";
+        case StackItemType::LOOP1:return "LOOP1";
+        case StackItemType::LOOP2:return "LOOP2";
+    }
+    return "UNKNOWN";
+}
+
 class ReversibleJanusInterpreter
 {
 private:
     ProgramCFG cfg;
-    Label l1 = 0; // last executed block
-    Label l2 = 0; // next block to be executed
+    Label l1 = 0;
+    Label l2 = 0;
     vector<StackItem> pi;
 
 public:
@@ -591,10 +620,17 @@ public:
     void printState(string m="")
     {
         cout << "\033[u\033[0J";
-        cout << "\n--- STATE: < l1=" << l1 << ", l2=" << l2 << " > ---\n";
+        cout << "\n[f = step forward, b = step backward, q = quit]\n";
+        cout << "\n|=== STACK STATE:\n";
+        for (auto &item : pi)
+        {
+            cout << " " << TypeToString(item.type);
+        }
+        cout << "\n\n|=== CURRENT BLOCKS: < l1= " << TypeToString(cfg.blocks[l1].type) << ", l2= " << TypeToString(cfg.blocks[l2].type) << " >\n";
+        cout << "\n|=== VARIABLES STATE: \n";
         for (auto &[var, val] : cfg.variables)
         {
-            cout << var << " = " << val << "\n";
+            cout << " " << var << " = " << val << "\n";
         }
         if(m != "") cout<< m << endl;
     }
@@ -958,7 +994,7 @@ int main(int argc, const char *argv[])
     Label startL2 = cfg.forwardFlow[startL1][0];
 
     ReversibleJanusInterpreter interpreter(cfg, startL1, startL2);
-    cout << "Debugger avviato. [f = step forward, b = step backward, q = quit]\n";
+    interpreter.printState();
     string cmd;
     try{
     while (cout << "> " && cin >> cmd && cmd != "q")
@@ -975,7 +1011,6 @@ int main(int argc, const char *argv[])
                 interpreter.printState("Inizio programma raggiunto.");
             else interpreter.printState();
         }
-        
     }
     }
     catch (const exception &e)

@@ -20,4 +20,4 @@ antlr4 -Dlanguage=Cpp -visitor janus.g4
 compilazione progetto:
 g++ -std=c++20 -I janus -I /usr/include/antlr4-runtime main.cpp janus/janus*.cpp -lantlr4-runtime -o mrv
 
-./mrv myprogram.janus
+./mrv myprogram.janus -m main_fwd
