@@ -95,3 +95,16 @@ procedure altro
     c -= 4
     call main
     a <=> b
+
+-------------------------------------------------------------------------
+
+a
+b
+c
+
+procedure main
+    if a=0 then
+        b += 1
+        c <=> b
+    fi a=0
+

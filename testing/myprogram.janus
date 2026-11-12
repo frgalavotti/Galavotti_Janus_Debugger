@@ -21,4 +21,3 @@ procedure main_bwd
     x1 += 5
     x2 += 8
     uncall fib
-
