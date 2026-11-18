@@ -91,9 +91,18 @@ int main(int argc, const char *argv[])
     interpreter.printState();
     string cmd;
     try{
-    while (cout << "> " && cin >> cmd && cmd != "q")
+    string line;
+    while (cout << " " && getline(cin, line))
     {
-        if (cmd == "f")
+        string cmd;
+        istringstream iss(line);
+        iss >> cmd;
+
+        if(cmd == "q")
+        {
+            break;
+        }
+        else if (cmd == "f")
         {
             if (!interpreter.stepForward())
                 interpreter.printState("End of program reached");
@@ -131,6 +140,21 @@ int main(int argc, const char *argv[])
                 }
             }
         }
+        else if (cmd == "newbreakpoint")
+        {
+            int x;
+            while (iss >> x) {
+                debuglines.insert(x);
+            }
+        }
+        else if (cmd == "removebreakpoint")
+        {
+            int x;
+            while (iss >> x) {
+                debuglines.erase(x);
+            }
+        }
+        else{cout<<" Unknown command: "<<cmd<<"\n";}
     }
     }
     catch (const exception &e)

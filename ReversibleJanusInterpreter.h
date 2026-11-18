@@ -507,7 +507,14 @@ public:
     void printState(string m="")
     {
         cout << "\033[u\033[0J";
-        cout << "\n[f = step forward, b = step backward, ff = forward until breakpoint, bb = backwards until breakpoint, q = quit]\n";
+        cout << "\n|=== COMMANDS:";
+        cout << "\n f = step forward";
+        cout << "\n b = step backward";
+        cout << "\n ff = forward until breakpoint";
+        cout << "\n bb = backwards until breakpoint";
+        cout << "\n newbreakpoint 'linenumbers' = add new breakpoints";
+        cout << "\n removebreakpoint 'linenumbers' = remove breakpoints";
+        cout << "\n q = quit\n";
         cout << "\n|=== STACK STATE:\n";
         for (auto &item : pi)
         {
@@ -523,6 +530,16 @@ public:
         {
             cout << " " << var << " = " << val << "\n";
         }
+        for (auto &[var, vec] : cfg.arrays)
+        {
+            cout << " " << var << " = ";
+            for (int val : vec)
+            {
+                cout << " " << val;
+            }
+            cout << "\n";
+        }
         if(m != "") cout<< m << endl;
+        cout << "\n|=== INPUT:\n";
     }
 };
