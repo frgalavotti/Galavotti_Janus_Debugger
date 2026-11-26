@@ -43,6 +43,10 @@ public:
             }
             return cfg.variables.contains(name) ? cfg.variables[name] : 0;
         }
+        else if (ctx->expression().size() == 1)
+        {
+            return evalExpr(ctx->expression(0));
+        }
         else if (ctx->expression().size() == 2 && ctx->operator_())
         {
             int a = evalExpr(ctx->expression(0));

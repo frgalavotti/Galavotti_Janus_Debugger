@@ -92,7 +92,7 @@
 \geometry{top=3.8cm, bottom=4.5cm, left=4.3cm, right=4.3cm}
 \begin{document}
 
-\newgeometry{top=2cm, textwidth=450pt, left=1in}
+\newgeometry{top=2cm, textwidth=450pt, left=1.1in}
 \begin{titlepage}
 \begin{center}
 
@@ -148,15 +148,22 @@ Francesco Galavotti}}
 %\date{16.12.2026}
 %\maketitle
 
-\section{Introduzione}
+\section{Introduzione}\label{intro}
 
-L'obiettivo della programmazione reversibile è quello di ridurre la dissipazione del calore al livello fisico della computazione. Vuole risolvere il problema posto da Landauer~\cite{landauerIrreversibilityHeatGeneration1961}, che ha dimostrato come un processo computazionale dove lo stato precedente non è univocamente determinato deve dissipare un quantitativo minimo di calore, quindi ogni volta che un singolo bit di informazione viene scartato in una computazione irreversibile. La programmazione reversibile si basa quindi sul lavoro di Bennett~\cite{Bennett}, che ha dimostrato come, a livello teorico, una computazione reversibile in cui nessuna informazione è scartata, può essere eseguita con meno dissipazione di calore di una irreversibile.
+Un sistema computazione reversibile è caratterizzato dall'avere in qualunque momento uno stato di computazione precedente e uno stato di computazione successivo a quello corrente, e di conseguenza puo spostarsi deterministicamente in una direzione o l'altra. L'obiettivo della programmazione reversibile è quello di ridurre la dissipazione del calore al livello fisico della computazione. Vuole risolvere il problema posto da Landauer~\cite{landauerIrreversibilityHeatGeneration1961}, che ha dimostrato come un processo computazionale dove lo stato precedente non è univocamente determinato deve dissipare un quantitativo minimo di calore, quindi ogni volta che un singolo bit di informazione viene scartato in una computazione irreversibile. La programmazione reversibile si basa invece sul lavoro di Bennett~\cite{Bennett}, che ha dimostrato come, a livello teorico, una computazione reversibile in cui nessuna informazione è scartata, può essere eseguita con meno dissipazione di calore di una irreversibile.
+\medskip
 
-Oltre al livello fisico legato allo sviluppo di circuiti reversibili, per riuscire a riutilizzare il maggior quantitativo di energia (ed evitare la dissipazione del calore) all'interno di sistemi reversibili, è necessario prendere in considerazione anche una logica reversibile al livello del software. Il principale linguaggio di programmazione reversibile è Janus~\cite{JanusSem}. Sebbene la semantica illustrata nell'articolo originale di presentazione del linguaggio sia costruita in maniera "big-step", altre ricerche~\cite{LV26} hanno poi presentato una più recente semantica "small-step" e reversibile utile per permettere lo sviluppo di nuove funzionalità per il linguaggio. La natura bidirezionale di questa semantica apre nuove possibilità nell'analisi e nel controllo dell'esecuzione del codice. E' grazie a questa semantica, infatti, che è stato costruito il debugger presentato in questo documento, definito step-by-step e reversibile perchè ha la capacità di andare avanti e indietro a singoli passi durante l'esecuzione del programma. Rende quindi la fase di debugging del programmatore più semplice, in quanto è possibile analizzare lo stato di memoria ad ogni singolo step e si puo avanzare o indietreggiare a piacimento tra le operazioni e i breakpoint durante l'esecuzione. Di seguito andremo ad analizzare il funzionamento con le relative possibilità che il debugger offre e la struttura del codice con le relative scelte architetturali fatte, in modo da fornire al lettore la completa capacità d'uso e di manutenzione del debugger, nonché una panoramica dei possibili sviluppi futuri.
+Oltre al livello fisico legato allo sviluppo di circuiti reversibili, per riuscire a riutilizzare il maggior quantitativo di energia (ed evitare la dissipazione del calore) all'interno di sistemi reversibili, è necessario prendere in considerazione anche una logica reversibile al livello del software. Il principale linguaggio di programmazione reversibile è Janus, questo è il primo del suo genere, ogni programma, procedura (funzione), costrutto o operazione è invertibile ed eseguibile in entrambe le direzioni. Questo significa che se un programma a cui assegnamo uno stato iniziale delle variabili \emph{x} arriva a fine esecuzione ad ottenere lo stato finale \emph{x'}, allora è possibile eseguire l'\emph{inverso} del programma e partire dallo stato \emph{x'} per ottenere, a fine computazione, lo stato \emph{x}. La stessa logica si applica anche alle procedure e grazie alla struttura del linguaggio l'inversione non richiede la scrittura manuale della procedura inversa.
+\centerline{\emph{forward}: call $pgm$ $\sim$ uncall $pgm^{-1}$}
+\centerline{\emph{backward}: uncall $pgm$ $\sim$ call $pgm^{-1}$}
+L'inversione di programmi o procedure è un processo deterministico ed è strettamente legato alla reversibilità della computazione. Infatti l'esecuzione in avanti di un programma equivale all'esecuzione all'indietro dell'inverso dello stesso, e l'esecuzione all'indietro di un programma equivale all'esecuzione in avanti dell'inverso dello stesso ~\cite{JanusSem}.
+\medskip
+
+Sebbene la semantica illustrata nell'articolo originale di presentazione del linguaggio sia costruita in maniera "big-step", altre ricerche~\cite{LV26} hanno poi presentato una più recente semantica "small-step" e reversibile utile per permettere lo sviluppo di nuove funzionalità per il linguaggio. La natura bidirezionale di questa semantica apre nuove possibilità nell'analisi e nel controllo dell'esecuzione del codice. E' grazie a questa semantica, infatti, che è stato costruito il debugger presentato in questo documento, definito step-by-step e reversibile perchè ha la capacità di andare avanti e indietro a singoli passi durante l'esecuzione del programma. Rende quindi la fase di debugging del programmatore più semplice, in quanto è possibile analizzare lo stato di memoria ad ogni singolo step e si puo avanzare o indietreggiare a piacimento tra le operazioni e i breakpoint durante l'esecuzione. Di seguito andremo ad analizzare il funzionamento con le relative possibilità che il debugger offre e la struttura del codice con le relative scelte architetturali fatte, in modo da fornire al lettore la completa capacità d'uso e di manutenzione del debugger, nonché una panoramica dei possibili sviluppi futuri.
 
 \section{Il linguaggio di programmazione reversibile Janus}
 
-In questa sezione presentiamo brevemente la sintassi e la semantica di Janus~\cite{YOKOYAMA201071,LoopSem,JanusSem}, un linguaggio di programmazione imperativo reversibile, in cui ogni operazione può essere eseguita in entrambe le direzioni, avanti e indietro.
+Nel seguente capitolo vogliamo introdurre il linguaggio di programmazione Janus, i suoi costrutti e le sue peculiarità. E' un linguaggio reversibile, questo significa che ogni programma, procedura o operazione può essere eseguita in entrambe le direzioni, avanti (forward) e indietro (backward). Ci atterremo alla struttura presentata nel documento originale di presentazione del linguaggio~\cite{YOKOYAMA201071,LoopSem,JanusSem}.
 
 \begin{figure}[h]
 \small
@@ -165,8 +172,7 @@ $
 \begin{array}{rcl@{~~~~~~}rcl@{ }}
 \mi{p} & ::= & \mi{d}^{*} ~(\ms{procedure} ~id~s)^{+} & \\
 \mi{d} & ::= & x  \mid x[c]  &\\
-\mi{s} & ::= & x \oplus = e \, \mid \, x[e]\oplus=e \, \mid \, x <=> e \, \mid \, x[e] <=> e \,
-\mid \ms{if}~e ~\ms{then} ~s~\ms{else}~s~\ms{fi}~e \\
+\mi{s} & ::= & x \oplus = e \, \mid \, x[e]\oplus=e \, \mid \ms{if}~e ~\ms{then} ~s~\ms{else}~s~\ms{fi}~e \\
 & \mid & \ms{from}~e~\ms{do}~s~\ms{loop}~s~\ms{until}~e \,
 \mid \ms{call}~id \, \mid \, \ms{uncall}~id\mid \, \ms{skip} \, \mid \, s~s\\
 \mi{e} & ::= & c \mid x  \mid x[e] \mid e \odot e \\
@@ -180,46 +186,61 @@ $
 \caption{Sintassi di Janus} \label{syntax}
 \end{figure}
 
-La sintassi di Janus è illustrata nella Figura~\ref{syntax}. Il linguaggio contiene operatori di assegnamento, di condizione, cicli e chiamate a procedura.
-Un programma è composto da un insieme di dichiarazioni di variabili e uno di procedure, ciascuna introdotta tramite la keyword $\ms{procedure}$ seguita dal nome della procedura (identifier) e uno statement che rappresenta il body della procedura.
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=0.9\textwidth]{pictures/condandloop.png}
+    \caption{Diagrammi del condizionale e del loop}
+    \label{fig:condandloop}
+\end{figure}
 
-L'istruzione di assegnamento reversibile prende la forma di 
-``$x \oplus = e$'' (o ``$x[e_1] \oplus = e_2$'' per gli assegnamenti ad array),
-ed equivale a
-$x = x \oplus e$ (\ $x[e_1] = x[e_1]\oplus e_2$), 
-dove $\oplus$ rappresenta un operatore tra più, meno e lo xor bitwise.
-Janus richiede che la variabile sul lato sinistro dell'operazione, 
-$x$, non compaia nell'espressione $e$ 
-(nel caso di array non deve comparire né in $e_1$ né in $e_2$).
+In Figura~\ref{syntax} è presentata la sintassi di Janus. Un programma comincia con una serie di dichiarazioni di variabili e array, i valori supportati sono solamente gli interi e tutte le variabili e posizioni negli array partono a inizio programma col valore zero. Seguono poi, le dichiarazioni delle procedure, ognuna di queste introdotta con la keyword "procedure" e identificata da un nome (id) e una serie di statements. Le procedure non hanno né parametri né variabili locali. Gli statement rappresentano le operazioni e i costrutti che il programmatore può utilizzare mentre scrive codice Janus, ognuno di questi è reversibile.
 
-L'istruzione di scambio prende la forma di
-``$x <=> x$'', dove $x ::= x \mid x[e]$, e la sua funzione è quella di scambiare il valore di due variabili (o elementi di array), anche qui Janus richiede che la variabile sul lato sinistro dell'operazione, 
-$x$, non compaia nell'espressione $e$.
+Lo statement di assegnamento prende la forma ``$x \oplus = e$'' (o ``$x[e_1] \oplus = e_2$'' per gli assegnamenti ad array), ed equivale a $x = x \oplus e$ (\ $x[e_1] = x[e_1]\oplus e_2$), dove $\oplus$ rappresenta un operatore tra più, meno e lo xor bitwise. Janus richiede che la variabile sul lato sinistro dell'operazione, $x$, non compaia nell'espressione $e$ (nel caso di array non deve comparire né in $e_1$ né in $e_2$). Gli assegnamenti vanno quindi a modificare il valore delle variabili senza sovrascriverlo, questo per garantire la reversibilità evitando di scartare informazioni (vedi Introduzione, capitolo~\ref{intro}).
 
-Gli operatori condizionali reversibili prendono la forma di  ``$\ms{if}~e_1~\ms{then}~s_1~\ms{else}~s_2~\ms{fi}~e_2$.'' 
-Se il test $e_1$ corrisponde a $\mathit{true}$, allora $s_1$ viene eseguito, 
-e l'assertion $e_2$ deve anch'essa corrispondere a $true$. 
-Allo stesso modo, se $e_1$ corrisponde a $\mathit{false}$, allora $s_2$
-viene eseguito, e l'assertion $e_2$ deve essere $false$.
+Janus include anche un'istruzione di scambio che prende la forma ``$e <=> e$'', dove $e ::= x \mid x[e]$, e la sua funzione è quella di scambiare il valore di due variabili (o elementi di array), anche qui Janus richiede che la variabile sul lato sinistro dell'operazione, $x$, non compaia nell'espressione $e$. Questa istruzione è zucchero sintattico che abbrevia la sequenza di statement: $x1 \mathbin{\text{\^{}}}= x2$ ; $x2 \mathbin{\text{\^{}}}= x1$ ; $x1 \mathbin{\text{\^{}}}= x2$.
 
-I loop reversibili prendono la forma di
-``$\ms{from}~e_1~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~e_2$''. 
-Subito, l'assertion $e_1$ deve avere come valore $\mathit{true}$. 
-In tal caso, $s_1$ viene eseguito, per poi passare alla valutazione del
-test $e_2$. Se $e_2$ è $true$, il loop termina. 
-Altrimenti, $s_2$ viene eseguito e il controllo ritorna ad $e_1$, 
-che, in questo caso, deve corrispondere a $false$;
-A questo punto l'esecuzione procede con $s_1$ per poi valutare nuovamente $e_2$,
-ripetendo questo ciclo fino a che $e_2$ non corrisponde a $true$.
+Lo statement di condizione prende la forma: ``$\ms{if}~e_1~\ms{then}~s_1~\ms{else}~s_2~\ms{fi}~e_2$.'', le due condizioni $e_1$ e $e_2$ sono chiamate rispettivamente \emph{test} e \emph{assertion}. Se il valore del test è \emph{true} allora viene eseguito il blocco di statement \emph{s1}, altrimenti viene eseguito il blocco \emph{s2}, perchè la condizione sia valida il valore dell'assertion deve essere lo stesso del test, questo serve a garantire la reversibilità in quanto un'esecuzione backward del programma riesce ad entrare nel path giusto del condizionale.
 
-In questo paper assumiamo che le procedure non hanno né parametri né variabili locali. Di conseguenza, una chiamata a procedura prende la forma
-``$\ms{call}~\mathit{id}$'' ed esegue il suo body utilizzando i valori delle variabili globali. Allo stesso modo,
-``$\ms{uncall}~\mathit{id}$'' esegue la procedura \emph{inversa}.
+Lo statement del ciclo prende la forma: ``$\ms{from}~e_1~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~e_2$''. Qui, $e_1$ prende il nome di assertion e $e_2$ prende il nome di test, perchè il ciclo sia valido la prima valutazione dell'assertion deve avere come risultato \emph{true}, quindi gli statement in $s_1$ vengono eseguiti. Ora viene valutata la seconda condizione, il test $e_2$, se questa corrisponde al valore \emph{true} allora il loop termina, altrimenti vengono eseguiti gli statement all'interno di $s_2$. In quest'ultimo caso il controllo ritorna poi all'assertion $e_1$ che deve però avere come valore \emph{false}, e viene eseguito nuovamente $s_1$. Il ciclo si ripete finche il test $e_2$ non corrisponde a \emph{true}.
 
+Gli statement di chiamata a procedura sono due e prendono le forme: ``$\ms{call}~\mathit{id}$'' per eseguire la procedura nel modo in cui è stata scritta (forward) e ``$\ms{uncall}~\mathit{id}$'' per eseguire la versione inversa della stessa procedura (backward).
+
+In Figura~\ref{syntax} è anche illustrato l'intervallo di interi che le variabili possono assumere come valore e che possono essere usati come costante all'interno di espressioni, inoltre sono mostrati anche gli operatori aritmetici (+, -, *, /, \%), relazionali ($<$, $>$, =, !=, $<$=, $>$=), bitwise (\&, $|$, \textasciicircum{}) e logici (\&\&, $|$$|$) utilizzabili nelle espressioni.
 \bigskip
-Ora introduciamo una semantica small-step~\cite{LLS24} per Janus (diversa da quella big-step descritta in ~\cite{YOKOYAMA201071,LoopSem,JanusSem}). Trasformare una semantica big-step in una small-step, solitamente, richiede l'aggiunta di uno stack alle configurazioni (vedere \cite{Sestoft97,SPJ97}). In alternativa è possibile definire una semantica small-step usando dei \emph{contexts} per specificare dove avvengono le riduzioni, come fatto in \cite{LLS24}. In questo documento, però, preferiamo l'utilizzo di uno stack in quanto semplifica la creazione di una versione reversibile. Inoltre, può aiutare a chiarire le cause che portano ad un errore di esecuzione, il che può essere utile per una potenziale estensione della semantica attua alla gestione degli errori.
 
-\begin{figure}[!t]
+\begin{figure}[h]
+\small
+\begin{center}
+$
+\begin{array}{rcl@{~~~~~~}rcl@{ }}
+\mathcal{I}_{op}\llbracket + \rrbracket ::= - \hspace{1,5cm} 
+\mathcal{I}_{op}\llbracket - \rrbracket & ::= & + \hspace{1,5cm}
+\mathcal{I}_{op}\llbracket \hat{~} \rrbracket ::= \hat{~} \\
+\mathcal{I}\llbracket x\oplus= e \rrbracket & ::= & x~\mathcal{I}_{op}\llbracket \oplus \rrbracket= e \\
+\mathcal{I}\llbracket  x[e_1]\oplus=e_2 \rrbracket & ::= & x[e_1]~\mathcal{I}_{op}\llbracket \oplus \rrbracket= e_2 \\
+\mathcal{I}\llbracket \ms{if}~e_1 ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~e_2 \rrbracket & ::= & \ms{if}~e_2 ~\ms{then} ~\mathcal{I}\llbracket s_1 \rrbracket~\ms{else}~\mathcal{I}\llbracket s_2 \rrbracket~\ms{fi}~e_1 \\
+\mathcal{I}\llbracket \ms{from}~e_1~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~e_2 \rrbracket & ::= & \ms{from}~e_2~\ms{do}~\mathcal{I}\llbracket s_1 \rrbracket~\ms{loop}~\mathcal{I}\llbracket s_2 \rrbracket~\ms{until}~e_1 \\		
+\mathcal{I}\llbracket \ms{call}~id \rrbracket & ::= & \ms{uncall}~id \\
+\mathcal{I}\llbracket \ms{uncall}~id \rrbracket & ::= &   \ms{call}~id \\
+\mathcal{I}\llbracket \ms{skip} \rrbracket & ::= & \ms{skip} \\
+\mathcal{I}\llbracket s_1~s_2 \rrbracket & ::= & \mathcal{I}\llbracket s_2 \rrbracket ~ \mathcal{I}\llbracket s_1 \rrbracket \\
+\mathcal{I}\llbracket \ms{procedure}~id~s \rrbracket & ::= & \ms{procedure} ~id^{-1}~\mathcal{I}\llbracket s \rrbracket \\
+%\mathcal{I}\llbracket \ms{send}~x~ch \rrbracket & ::= & \ms{rec}~x~ch \\
+%\mathcal{I}\llbracket \ms{rec}~x~ch \rrbracket & ::= & \ms{send}~x~ch \\
+\end{array}
+$
+\end{center}
+\caption{Funzione di inversione degli statement Janus} \label{fig:inverter}
+\end{figure}
+
+\section{Semantica reversibile per Janus}
+\label{sec:LV26}
+Visto che la semantica presentata nel paper originale di Janus prende la forma cosiddetta "big-step", che è inadatta alla reversibilità dei singoli step, introduciamo ora la semantica reversibile e "small-step" effettivamente utilizzata nell'implementazione del debugger \cite{LV26}.
+\bigskip
+
+Questa semantica si basa sull'utilizzo di un \emph{program counter} che punta al prossimo statement da eseguire. E' inoltre divisa in una relazione di transizione forward che gestisce l'esecuzione in avanti, e una relazione di transizione backward che gestisce quella all'indietro, e quindi può essere utilizzata per annullare i passi fatti dalla relazione forward.
+
+\begin{figure}[h]
 \small
 %		\begin{center}
 \begin{mathpar}
@@ -246,250 +267,14 @@ Ora introduciamo una semantica small-step~\cite{LLS24} per Janus (diversa da que
 %\end{center}
 \end{figure}
 
-La Figura~\ref{fig:exp} illustra le regole per la valutazione delle espressioni.
-Una regola di forma
-$\tuple{\sigma}{e} \Downarrow  v$
-denota la valutazione dell'espressione $e$ ad uno stato \emph{store} 
-$\sigma$ dello store, che genera il valore $v$. 
-%
-Uno \emph{store} $\sigma$ è una funzione che associa nomi di variabile e nomi di variabile con indice a valori. Rappresentiamo con $\sigma[x \mapsto v]$ l'aggiornamento di $\sigma$ che assegna il valore $v$ alla variabile $x$. Allo stesso modo, $\sigma[x[v] \mapsto v']$ rappresenta l'aggiornamento di $\sigma$ che assegna il valore $v'$ alla variabile con indice $x[v]$.
-Per semplicità assumiamo che $\sigma$ è definito (con valore zero se non diversamente inizializzato esplicitamente) per tutte le variabili usate nel programma.  
-Con $\emptystore$ rappresentiamo uno store vuoto, che quindi associa zero ad ogni variabile.
-Qui, $\llbracket \_ \rrbracket$ rappresenta una funzione di \emph{interpretazione}.
-I valori delle variabili sono interi (l'intervallo mostrato nella Figura~\ref{syntax} rappresenta gli interi che possono comparire nei programmi) e gli operatori hanno i loro significati standard sugli interi, ad esempio,
-$\llbracket \mbox{\tt +} \rrbracket (2,3) = 5$.
-La divisione è quella standard e $\%$ è il relativo resto, i.e.,
-$a = (a/b)*b + (a\,\%\,b)$ dove $a\,\%\,b$ ha il segno di $b$
-(e.g., $(-7)/2=-4$ e $(-7)\,\%\,2=1$); entrambi sono indefiniti quando $b=0$, cosicché nessuna regola venga applicata.
-Gli operatori $\mbox{\tt \&}$, $\mbox{\tt |}$ e $\hat{~}$
-vengono applicati sulla rappresentazione binaria degli operandi.
-Gli operatori di comparazione e quelli logici $\mbox{\tt \&\&}$ e $\mbox{\tt ||}$ danno come valore di ritorno $1$ (true) oppure
-$0$ (false), qualsiasi valore diverso da zero vale come $true$, inoltre entrambi gli operandi degli operatori binari sono sempre valutati.
-I nostri risultati non dipendono da queste scelte:
-l'unico requisito è che $\ms{is\_true?}$ e $\ms{is\_false?}$ dividano i valori, e che per ogni $\oplus\in\{+,-,\hat{~}\}$,
-$\llbracket\mathcal{I}_{op}\llbracket\oplus\rrbracket\rrbracket(\llbracket\oplus\rrbracket(a,v),v)=a=
-\llbracket\oplus\rrbracket(\llbracket\mathcal{I}_{op}\llbracket\oplus\rrbracket\rrbracket(a,v),v)$, quindi che l'interpretazione di un operatore e quella del suo inverso siano operazioni inverse.
-Una \emph{configurazione} nella nostra semantica prende la forma $\config{\sigma,s,\s}$, dove $\sigma$ è uno store globale, s è uno statement e $\s$ è uno \emph{stack} i.e., una lista di item dalla forma 
-$\ms{seq}(s_2)$,
-$\ms{if\_true}(e_2)$, 
-$\ms{if\_false}(e_2)$,
-$\ms{loop1}(e_1,s_1,e_2,s_2)$, e 
-$\ms{loop2}(e_1,s_1,e_2,s_2)$.
+Nel caso della valutazione delle espressioni, la semantica reversibile riutilizza le regole appartenenti alla semantica big-step originale, mostrate in Figura~\ref{fig:exp}, senza modificarle. Una regola di forma $\tuple{\sigma}{e} \Downarrow  v$ indica la valutazione dell'espressione $e$ ad uno stato \emph{store} $\sigma$ dello store globale delle variabili, che genera il valore $v$. Uno \emph{store} $\sigma$ è una funzione che associa nomi di variabile e nomi di array con indice a valori. Rappresentiamo con $\sigma[x \mapsto v]$ l'aggiornamento di $\sigma$ che assegna il valore $v$ alla variabile $x$. Allo stesso modo, $\sigma[x[v] \mapsto v']$ rappresenta l'aggiornamento di $\sigma$ che assegna il valore $v'$ all'array $x[v]$. Lo store $\sigma$ è definito (con valore zero se non diversamente inizializzato esplicitamente) per tutte le variabili usate nel programma. Con $\emptystore$ rappresentiamo uno store vuoto, che quindi associa zero ad ogni variabile (all'inizio del programma lo store è $\emptystore$). Qui, $\llbracket \_ \rrbracket$ indica una funzione che calcola un risultato tra valori interi facendo uso di un operatore.
 
-Dato un programma Janus $p = (s~p_1~\ldots~p_n)$, 
-una configurazione \emph{iniziale} prende la forma 
-$\config{\emptystate,s,\nul}$, dove $\nul$ è una lista vuota che rappresenta lo stack iniziale vuoto.
-La semantica small-step è definita con un set di regole di transizione. Dividiamo queste in due gruppi: gli statement base (Figura~\ref{fig:smallstep}) e gli statement condizionali e loop (Figure~\ref{fig:ifloop}).
-Uno \emph{step di transizione} nella semantica small-step prende la forma
-$\config{\sigma,s,\s} \to \config{\sigma',s',\s'}$.
-
-\begin{figure}[t]
-\small
-\begin{mathpar}
-\inferrule*[left=AssVarS] 
-{  \tuple{\sigma}{e} \Downarrow	 v } 
-{ \config{\sigma,x~\oplus=e,\s} \rightarrow \config{\sigma[x \mapsto \llbracket \oplus \rrbracket(\sigma(x),v)],\ms{skip},\s} }     
-\and
-\inferrule*[left=AssArrS] 
-{ 
-\tuple{\sigma}{ e_l} \Downarrow	 v_l \\
-\tuple{\sigma}{ e} \Downarrow	 v
-} 
-{
-\config{\sigma,x[e_l]~\oplus=e,\s} \rightarrow 
-\config{\sigma[x[v_l] \mapsto \llbracket \oplus \rrbracket(\sigma(x[v_l]),v)],\ms{skip},\s} 
-}     
-\and
-\inferrule*[left=CallS] 
-{  ~} 
-{ \config{\sigma,\ms{call}~id,\s} \rightarrow  \config{\sigma,\Gamma(id),\s}  }
-\and
-\inferrule*[left=UnCallS] 
-{   ~ } 
-{ \config{\sigma,\ms{uncall}~id,\s} \rightarrow 
-\config{\sigma,\mathcal{I}\llbracket \Gamma(id) \rrbracket,\s}
-}
-\and
-\inferrule*[left=Seq1]
-{ ~ }
-{
-\config{\sigma,s_1~s_2,\s} \rightarrow  
-\config{\sigma,s_1,\ms{seq}(s_2)\cons\s}
-}
-\and
-\inferrule*[left=Seq2]
-{ ~ }
-{
-\config{\sigma,\ms{skip},\ms{seq}(s_2)\cons\s} \rightarrow  \config{\sigma,s_2,\s} 
-}
-\end{mathpar}
-\caption{Semantica Small-step: regole per i costrutti base} \label{fig:smallstep}
-\end{figure}
-
-\begin{figure}[t]
-\small
-\begin{center}
-$
-\begin{array}{rcl@{~~~~~~}rcl@{ }}
-\mathcal{I}_{op}\llbracket + \rrbracket ::= - \hspace{1,5cm} 
-\mathcal{I}_{op}\llbracket - \rrbracket & ::= & + \hspace{1,5cm}
-\mathcal{I}_{op}\llbracket \hat{~} \rrbracket ::= \hat{~} \\
-\mathcal{I}\llbracket x\oplus= e \rrbracket & ::= & x~\mathcal{I}_{op}\llbracket \oplus \rrbracket= e \\
-\mathcal{I}\llbracket  x[e_1]\oplus=e_2 \rrbracket & ::= & x[e_1]~\mathcal{I}_{op}\llbracket \oplus \rrbracket= e_2 \\
-\mathcal{I}\llbracket \ms{if}~e_1 ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~e_2 \rrbracket & ::= & \ms{if}~e_2 ~\ms{then} ~\mathcal{I}\llbracket s_1 \rrbracket~\ms{else}~\mathcal{I}\llbracket s_2 \rrbracket~\ms{fi}~e_1 \\
-\mathcal{I}\llbracket \ms{from}~e_1~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~e_2 \rrbracket & ::= & \ms{from}~e_2~\ms{do}~\mathcal{I}\llbracket s_1 \rrbracket~\ms{loop}~\mathcal{I}\llbracket s_2 \rrbracket~\ms{until}~e_1 \\		
-\mathcal{I}\llbracket \ms{call}~id \rrbracket & ::= & \ms{uncall}~id \\
-\mathcal{I}\llbracket \ms{uncall}~id \rrbracket & ::= &   \ms{call}~id \\
-\mathcal{I}\llbracket \ms{skip} \rrbracket & ::= & \ms{skip} \\
-\mathcal{I}\llbracket s_1~s_2 \rrbracket & ::= & \mathcal{I}\llbracket s_2 \rrbracket ~ \mathcal{I}\llbracket s_1 \rrbracket \\
-\mathcal{I}\llbracket \ms{procedure}~id~s \rrbracket & ::= & \ms{procedure} ~id^{-1}~\mathcal{I}\llbracket s \rrbracket \\
-%\mathcal{I}\llbracket \ms{send}~x~ch \rrbracket & ::= & \ms{rec}~x~ch \\
-%\mathcal{I}\llbracket \ms{rec}~x~ch \rrbracket & ::= & \ms{send}~x~ch \\
-\end{array}
-$
-\end{center}
-\caption{Funzione di inversione degli statement Janus} \label{fig:inverter}
-\end{figure}
-
-Ora spieghiamo brevemente il primo set di regole (Figure~\ref{fig:smallstep}):
-\begin{itemize}
-\item Le regole \rules{AssVarS} e \rules{AssArrS} 
-definiscono gli assegnamenti. 
-\rules{AssVarS} calcola il nuovo valore della variabile e aggiorna lo store, mentre \rules{AssArrS} calcola l'indice dell'array e il nuovo valore e aggiorna il valore dell'array nello store.
-
-\item Una chiamata a procedura, detta call (definita dalla regola \rules{CallS}), trova il body della procedura $id$, 
-grazie alla funzione di mapping $\Gamma$. 
-In maniera simile, una uncall di una procedura (definita dalla regola 
-\rules{UnCallS}) funziona allo stesso modo, ma trova il body della procedura
-\emph{inversa} $\mathcal{I}\llbracket\Gamma(id)\rrbracket$ di $id$.
-
-\item Infine, l'esecuzione di una sequenza è definita dalle regole \rules{Seq1} e \rules{Seq2}. Per semplicità, assumiamo che l'operatore di sequenza sia associativo a destra in modo che $s_1~s_2~\ldots~s_n$ sia sempre interpretato come $s_1~(s_2~(\ldots (s_{n-1}~s_n)\ldots))$.
-Data una sequenza $s_1~s_2$, la regola \rules{Seq1} sposta $s_2$ nello stack (inserendo un elemento del tipo $\mathsf{seq}(s_2)$ in cima allo stack), e comincia ad eseguire $s_1$.
-Una volta che l'esecuzione di $s_1$ è terminata, la regola \rules{Seq2} esegue una pop di
-$\mathsf{seq}(s_2)$ dallo stack e $s_2$ diventa l'attuale controllo della configurazione.
-\end{itemize}
-
-\begin{figure}[t]
-\small
-\begin{mathpar}
-\inferrule*[left=IfTrue1] 
-{ 
-\tuple{\sigma}{e_1} \Downarrow	 v_1 \\ 
-\ms{is\_true?}(v_1) \\
-} 
-{ \config{\sigma,\ms{if}~ e_1 ~\ms{then}~ s_1 ~\ms{else}~s_2~\ms{fi} ~e_2,\s} \rightarrow  \config{\sigma,s_1,\ms{if\_true}(e_2)\cons\s}  
-}
-\and 
-\inferrule*[left=IfTrue2] 
-{ 
-\tuple{\sigma}{e_2} \Downarrow	 v_2 \\ 
-\ms{is\_true?}(v_2) \\
-}
-{ \config{\sigma,\ms{skip},\ms{if\_true}(e_2)\cons\s}  
-\rightarrow 
-\config{\sigma,\ms{skip},\s}
-}
-\and 
-\and 
-\inferrule*[left=IfFalse1] 
-{ 
-\tuple{\sigma}{ e_1} \Downarrow	 v_1 \\ 
-\ms{is\_false?}(v_1) \\
-} 
-{ \config{\sigma,\ms{if}~ e_1 ~\ms{then}~ s_1 ~\ms{else}~s_2~\ms{fi} ~e_2,\s} \rightarrow  \config{\sigma,s_2,\ms{if\_false}(e_2)\cons\s}  
-}
-\and 
-\inferrule*[left=IfFalse2] 
-{ 
-\tuple{\sigma}{e_2} \Downarrow	 v_2 \\ 
-\ms{is\_false?}(v_2) \\
-}
-{ \config{\sigma,\ms{skip},\ms{if\_false}(e_2)\cons\s}  
-\rightarrow 
-\config{\sigma,\ms{skip},\s}
-}
-\and
-\inferrule*[left=LoopMainS] 
-{ 
-\tuple{\sigma}{e_1} \Downarrow	 v_1\\ 
-\ms{is\_true?}(v_1) 
-} 
-{
-\config{\sigma,\ms{from}~ e_1 ~\ms{do}~ s_1 ~\ms{loop}~s_2~\ms{until} ~e_2,\s} 
-\rightarrow  
-\config{\sigma,s_1,\ms{loop1}(e_1,s_1,e_2,s_2)\cons\s}  
-}
-\and
-\inferrule*[left=LoopBaseS] 
-{ 
-\tuple{\sigma}{e_2} \Downarrow	 v_2\\ 
-\ms{is\_true?}(v_2) 
-} 
-{
-\config{\sigma,\ms{skip},\ms{loop1}(e_1,s_1,e_2,s_2)\cons\s}  
-\rightarrow
-\config{\sigma,\ms{skip},\s}  
-}
-\and
-\inferrule*[left=Loop1] 
-{ 
-\tuple{\sigma}{e_2} \Downarrow	 v_2\\ 
-\ms{is\_false?}(v_2) 
-} 
-{
-\config{\sigma,\ms{skip},\ms{loop1}(e_1,s_1,e_2,s_2)\cons\s}  
-\rightarrow
-\config{\sigma,s_2,\ms{loop2}(e_1,s_1,e_2,s_2)\cons\s}  
-}
-\and
-\inferrule*[left=Loop2] 
-{ 
-\tuple{\sigma}{e_1} \Downarrow	 v_1\\ 
-\ms{is\_false?}(v_1) 
-} 
-{
-\config{\sigma,\ms{skip},\ms{loop2}(e_1,s_1,e_2,s_2)\cons\s}  
-\rightarrow
-\config{\sigma,s_1,\ms{loop1}(e_1,s_1,e_2,s_2)\cons\s}  
-}
-\end{mathpar}
-\caption{Small-step semantics: rules for if and for loop} \label{fig:ifloop}
-\end{figure}
-
-Le regole di transizione per i condizionali e per i loop sono illustrate in Figura~\ref{fig:ifloop}. Andiamo a distinguere i seguenti casi:
-\begin{itemize}
-\item Per i condizionali, viene subito applicata una delle due regole \rules{IfTrue1} oppure \rules{IfFalse1}, in base a come viene valutata la condizione $e_1$ in $\mathit{true}$ oppure $\mathit{false}$. La regola \rules{IfTrue1}
-(resp.\ \rules{IfFalse1}) inserisce un nuovo elemento della forma $\mathsf{if\_true}(e_2)$ (resp.\ $\mathsf{if\_false}(e_2)$) in cima allo stack.
-
-\item Una volta che lo statement corrispondente è stato eseguito completamente, la regola \rules{IfTrue2} (resp.\ \rules{IfFalse2}) viene applicata se l'asserzione ritorna lo stesso valore del test.
-
-\item Per quanto riguarda i loop, la regola \rules{LoopMainS} accede al loop,
-richiedendo che l'asserzione $e_1$ ritorni true e iniziando l'esecuzione dello statement $s_1$. Inoltre, un elemento della forma $\mathsf{loop1}(e_1,s_1,e_2,s_2)$ viene inserito in cima allo stack.
-
-\item Ogni iterazione del loop é gestita grazie alle regole \rules{Loop1} e \rules{Loop2}. La prima regola, \rules{Loop1}, si applica quando $s_1$ è completamente eseguito e la condizione $e_2$ restituisce il valore $\mathit{false}$. In questo caso, $s_2$ diventa l'attuale controllo della configurazione e $\mathsf{loop1}(e_1,s_1,e_2,s_2)$ è rimpiazzato da $\mathsf{loop2}(e_1,s_1,e_2,s_2)$ all'interno dello stack.
-%
-La regola \rules{Loop2} é la controparte della regola \rules{Loop1} e viene applicata una volta che $s_2$ è stata eseguita completamente. Qui, $e_1$ deve ritornare $\mathit{false}$. Poi, $s_1$ diventa l'attuale controllo della configurazione e $\mathsf{loop2}(e_1,s_1,e_2,s_2)$ è rimpiazzato da $\mathsf{loop1}(e_1,s_1,e_2,s_2)$ nello stack.
-
-\item Infine, la regola \rules{LoopBaseS} viene applicata quando $s_1$ è stato completamente eseguito e il test $e_2$ ritorna il valore true, terminando l'esecuzione del loop.
-\end{itemize}
-
-\section{Semantica reversibile per Janus}
-\label{sec:LV26}
-Introduciamo ora brevemente la semantica reversibile effettivamente utilizzata nell'implementazione del debugger \cite{LV26}.
+Le regole in Figura~\ref{fig:exp} illustrano, quindi, come le espressioni sono valutate. Variabili e nomi di array con indice restituiscono il valore presente nello store, gli interi costanti restituiscono il loro valore e una operazione tra due espressioni le valuta entrambe e restituisce il risultato dell'operazione, eseguita tra i valori di queste.
 \bigskip
 
-In questa sezione, proponiamo una semantica small-step reversibile basata
-sull'utilizzo di un \emph{program counter}.
-Qui le regole non includono un pezzo di codice da eseguire, ma una label (etichetta)
-che punta al prossimo ''blocco'' del programma, che deve essere eseguito.
-%
-Ciò semplifica significativamente la creazione di una semantica reversibile per il linguaggio. Normalmente, le semantiche basate su program counter si limitano a semplici linguaggi assembly-like, dove l'esecuzione é gestita semplicemente incrementando il contatore o aggiornandolo per effettuare salti.
-Al contrario, i linguaggi di alto livello raramente fanno uso di un program 
-counter (contatore) esplicito, preferendo invece l'uso di evaluation contexts per 
-gestire implicitamente il control flow. Per un approfondimento piu dettagliato facciamo riferimento al documento citato.
-\bigskip
+Per gestire il controllo del program counter questa semantica introduce una struttura chiamata Control-Flow Graph (CFG), per fare ciò, il programma viene diviso in \emph{blocchi}, (ad esempio assegnamenti, condizioni, chiamate a procedura etc...), ognuno di questi rappresenta una istruzione elementare del programma ed è identificato da una label (etichetta), ogni label è unica nel programma. Inoltre, ad ogni procedura vengono aggiunti due blocchi, uno di \emph{start} ed uno di \emph{stop}, rispettivamente all'inizio e alla fine della procedura. In Figura~\ref{fig:labeled-syntax} è illustrata l'estensione della sintassi originale, prevista da questa semantica reversibile. La Figura~\ref{fig:programsum}, invece, mostra un programma Janus etichettato, MCM che calcola il minimo comune multiplo tra due numeri \emph{x} e \emph{y} e funge da esempio.
 
-\begin{figure}[t]
+\begin{figure}[h]
 \small
 \begin{center}
 $
@@ -520,128 +305,106 @@ $
 \end{center}
 \caption{Estensione della sintassi del linguaggio ($\mi{e}$ e $\oplus$ sono definiti come in Figura~\ref{syntax})} \label{fig:labeled-syntax}
 \end{figure}
-Di seguito introduciamo la struttura control-flow graph (CFG) per gestire i cambiamenti del program counter. A questo fine, la Figura~\ref{fig:labeled-syntax} introduce un'estensione della sintassi dove i \emph{blocchi elementari} (i.e., le condizioni, gli assegnamenti, call, uncall, e skip) sono ora etichettati da un label.
 
-Consideriamo un dominio di label $\cL$, dove 
-$\ell,\ell_1,\ldots$ appartengono al set $\cL$.
-In un programma, ogni label é unico.
-%
-Definiamo $\block(\ell) = o$
-se $[o]^\ell$ appartiene al programma considerato,
-dove $o$ è un blocco elementare.
-%
-\begin{figure}[t]
+\begin{figure}[h]
     \centering
     \begin{minipage}{0.95\textwidth}
         \ttfamily 
         % --- Left Column ---
         \begin{minipage}[t]{0.28\textwidth}
-            [\kw{start}]$^1$ \\ \protect
-            [n += 3]$^2$ \\
-            {[\kw{call} sumMul3]}$^3$ \\
-            {[\kw{stop}]}$^4$
+            x \\{}
+            y \\{}
+            i \\{}
+            mcm \\{}
+            \\{}
+            \kw{procedure} main \\{}
+            \hspace*{1em}[\kw{start}]$^1$ \\ \protect
+            \hspace*{1em}[x += 5]$^2$ \\{}
+            \hspace*{1em}[y += 3]$^3$ \\{}
+            \hspace*{1em}{[\kw{call} MCM]}$^4$ \\
+            \hspace*{1em}{[\kw{stop}]}$^5$
         \end{minipage}
         \hfill 
         % --- Right Column ---
         \begin{minipage}[t]{0.68\textwidth}
-            \kw{procedure} sumMul3 \\
-            \hspace*{1em} [\kw{start}]$^5$ \\
-            \hspace*{1em} [i += 1]$^6$ \\
+            \kw{procedure} MCM \\
+            \hspace*{1em} [\kw{start}]$^6$ \\
             \hspace*{1em} \kw{from} [i = 1]$^7$ \kw{do} \\
-            \hspace*{2em} \kw{if} [(i \% 3) = 0]$^8$ \kw{then} [total += i]$^9$
-            \hspace*{11em} \kw{else} [skip]$^{10}$ \\
-            \hspace*{2em} \kw{fi} [(i \% 3) = 0]$^{11}$ \\
-            \hspace*{1em} \kw{loop} \\
-            \hspace*{2em} [i += 1]$^{12}$ \\
-            \hspace*{1em} \kw{until} [i >= n]$^{13}$ \\
-            \hspace*{1em} [n += total]$^{14}$\\
-            \hspace*{1em} [\kw{stop}]$^{15}$\\
+            \hspace*{3em} \kw{if} [(i \% x) = 0 \&\& (i \% y) = 0]$^8$ \kw{then} \\{}
+            \hspace*{5em} [mcm += i]$^9$ \\{}
+            \hspace*{3em} \kw{fi} [(i \% x) = 0 \&\& (i \% y) = 0]$^{10}$ \\
+            \hspace*{2em} \kw{loop} \\
+            \hspace*{3em} [i += 1]$^{11}$ \\
+            \hspace*{1em} \kw{until} [mcm != 0]$^{12}$ \\
+            \hspace*{1em} [\kw{stop}]$^{13}$\\
         \end{minipage}
     \end{minipage}
-    \caption{Sum3: programma che calcola la somma dei multipli di 3 fino ad n $\tt n$}
-    \label{fig:program}
+    \caption{MCM: programma che calcola il minimo comune multiplo tra due numeri}
+    \label{fig:programsum}
 \end{figure}
-%
-Inoltre, assumiamo che tutte le procedure hanno un blocco elementare iniziale $\ms{start}$ ed uno finale $\ms{stop}$ (entrambi etichettati da corrispettivi label) che semplicemente definiscono il loro punto di inizio e di fine (e sono semanticamente equivalenti a $\ms{skip}$).
-%
-La Figura~\ref{fig:program} presenta un programma Janus etichettato, Sum3, che funge da esempio.
 
 \begin{figure}[t]
-\small
+%\small
+%$
+%\begin{array}{rcl}
+%\entry(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~
+%[e_2]^{\ell_2}) & = & \ell_1 \\
+%\entry(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_1 \\
+%\entry(s_1~s_2)  & = &  \entry(s_1)\\
+%\entry([s]^\ell) & = & \ell ~\textrm{ otherwise}\\[1ex]
+%\exit(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~
+%\ms{else}~s_2~\ms{fi}~[e_2]^{\ell_2}) & = & \ell_2 \\
+%\exit(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~
+%\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_2 \\
+%\exit(s_1~s_2) & = & \exit(s_2) \\
+%\exit([s]^\ell) & = & \ell ~\textrm{ otherwise}
+%\end{array}
+%$
+\begin{minipage}{.6\linewidth}
 $
 \begin{array}{rcl}
+%\entry([x \oplus = e]^\ell) & = & \ell \\
+%\entry([x[e_1]\oplus=e_2]^\ell) & = & \ell \\
 \entry(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~
-[e_2]^{\ell_2}) & = & \ell_1 \\
-\entry(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_1 \\
-\entry(s_1~s_2)  & = &  \entry(s_1)\\
-\entry([s]^\ell) & = & \ell ~\textrm{ otherwise}\\[1ex]
-\exit(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~
-\ms{else}~s_2~\ms{fi}~[e_2]^{\ell_2}) & = & \ell_2 \\
-\exit(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~
-\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_2 \\
-\exit(s_1~s_2) & = & \exit(s_2) \\
-\exit([s]^\ell) & = & \ell ~\textrm{ otherwise}
+[e_2]^{\ell_2}) & = & \ell_1\\
+\entry(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_1\\
+\\
+\exit(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~
+[e_2]^{\ell_2}) & = & \ell_2\\
+\exit(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_2\\
+%\entry([\ms{call}~id]^\ell) & = & \ell\\
+%\entry([\ms{uncall}~id]^\ell) & = & \ell\\
+%\entry([\ms{skip}]^\ell) & = & \ell\\
+%\entry([\ms{stop}]^\ell) & = & \ell\\
+
 \end{array}
 $
-%\begin{minipage}{.48\linewidth}
-%$
-%\begin{array}{rcl}
-%%\entry([x \oplus = e]^\ell) & = & \ell \\
-%%\entry([x[e_1]\oplus=e_2]^\ell) & = & \ell \\
-%\entry(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\\
-%\ms{else}~s_2~\ms{fi}~
-%[e_2]^{\ell_2}) & = & \ell_1\\
-%\entry(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\\
-%\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_1\\
-%%\entry([\ms{call}~id]^\ell) & = & \ell\\
-%%\entry([\ms{uncall}~id]^\ell) & = & \ell\\
-%%\entry([\ms{skip}]^\ell) & = & \ell\\
-%%\entry([\ms{stop}]^\ell) & = & \ell\\
-%\entry(s_1~s_2) & = & \entry(s_1)\\
-%\entry([s]^\ell) & = & \ell \textrm{ otherwise}
-%\end{array}
-%$
-%\end{minipage}
-%~~
-%\begin{minipage}{.48\linewidth}
-%$
-%\begin{array}{rcl}
-%%\exit([x \oplus = e]^\ell) & = & \ell \\
-%%\exit([x[e_1]\oplus=e_2]^\ell) & = & \ell \\
-%\exit(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\\
-%\ms{else}~s_2~\ms{fi}~
-%[e_2]^{\ell_2}) & = & \ell_2\\
-%\exit(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\\
-%\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}) & = & \ell_2\\
-%%\exit([\ms{call}~id]^\ell) & = & \ell\\
-%%\exit([\ms{uncall}~id]^\ell) & = & \ell\\
-%%\exit([\ms{skip}]^\ell) & = & \ell\\
-%%\exit([\ms{stop}]^\ell) & = & \ell\\
-%\exit(s_1~s_2) & = & \exit(s_2)\\
-%\exit([s]^\ell) & = & \ell \textrm{ otherwise}
-%\end{array}
-%$
-%\end{minipage}
+\end{minipage}
+~~
+\begin{minipage}{.4\linewidth}
+$
+\begin{array}{rcl}
+%\exit([x \oplus = e]^\ell) & = & \ell \\
+%\exit([x[e_1]\oplus=e_2]^\ell) & = & \ell \\
+
+%\exit([\ms{call}~id]^\ell) & = & \ell\\
+%\exit([\ms{uncall}~id]^\ell) & = & \ell\\
+%\exit([\ms{skip}]^\ell) & = & \ell\\
+%\exit([\ms{stop}]^\ell) & = & \ell\\
+\entry(s_1~s_2) & = & \entry(s_1)\\
+\entry([s]^\ell) & = & \ell \textrm{ otherwise}\\
+\\
+\exit(s_1~s_2) & = & \exit(s_2)\\
+\exit([s]^\ell) & = & \ell \textrm{ otherwise}
+\end{array}
+$
+\end{minipage}
 \caption{Entry ed exit}
 \label{fig:entryexit}
 \end{figure}
 
-Ora, la Figura~\ref{fig:entryexit} introduce la funzione ausiliaria $\entry$
-(resp.\ $\exit$), che restituisce il label iniziale (resp.\ finale) di uno statement del programma. Nota che, al contrario della maggior parte dei linguaggi di programmazione di alto livello, $\exit$ restituisce sempre un label unico perché i condizionali di Janus hanno un singolo exit point.
-%
-Consideriamo anche la seguente funzione parzialmente definita,
-$\context$, che identifica lo statement dove il label di una espressione data (un test o un'assertion) si presenta.
-E.g., se lo statement
-``$\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~
-[e_2]^{\ell_2}$'' appare in un programma, allora
-$\context(\ell_1) = \context(\ell_2) =
-(\ms{if}~[e_1]^{\ell_1} ~\ms{then} ~s_1~\ms{else}~s_2~\ms{fi}~
-[e_2]^{\ell_2})$.
-Analogamente, se lo statement 
-``$\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2}$''
-appare nel programma, allora
-$\context(\ell_1) = \context(\ell_2) =
-(\ms{from}~[e_1]^{\ell_1}~\ms{do}~s_1~\ms{loop}~s_2~\ms{until}~[e_2]^{\ell_2})$.
+La Figura~\ref{fig:entryexit} mostra le funzioni $\entry$ ed $\exit$, queste funzioni hanno come input uno statement e come output la prima o l'ultima label della sequenza di operazioni dello statement. Il label restituito è sempre unico perchè anche i condizionali hanno un singolo exit point in Janus.
+La funzione $\context$, invece, ha come valore di ritorno lo statement a cui appartiene una label che usiamo come valore di input.
 
 \begin{figure}[t]
 \small
@@ -690,14 +453,10 @@ $
 \caption{Control-flow di un programma Janus} \label{fig:cfg}
 \end{figure}
 
-Introduciamo ora la funzione $\flow$ (Figura~\ref{fig:cfg}) che restituisce
-gli estremi del CFG di un programma Janus.
-%
-Notiamo che non abbiamo gli estremi per le call/return (resp.\ uncall/return) nel CFG. In questi casi il control flow viene gestito dinamicamente nelle rispettive regole di transizione.
-%
-Rappresentiamo graficamente gli estremi $(\ell_1,\ell_2)$ come $\ell_1 \edge \ell_2$.
-%
-Poi procediamo come segue:
+Introduciamo ora la funzione $\flow$ (Figura~\ref{fig:cfg}) che costruisce il Control-Flow Graph restituendo le label agli estremi di un insieme di statements Janus. Rappresentiamo un collegamento diretto tra $(\ell_1,\ell_2)$, all'interno del cfg come segue: $\ell_1 \edge \ell_2$. La funzione non è definita per le call e le return in quanto il passaggio di controllo in queste operazioni viene gestito dalle regole della semantica e non da un passo in avanti o indietro nel cfg corrente. Ogni procedura infatti ha il suo pezzo di Control-Flow Graph separato da quello delle altre, quando viene fatta una chiamata a procedura le regole reindirizzano il program counter al cfg della procedura, e alla fine di questa lo riportano al punto di partenza.
+
+\medskip
+\noindent Per adattare un programma Janus a questa semantica procediamo come segue:
 \begin{itemize}
 \item dato un programma, %$p = (s~p_1~\ldots~p_n)$, 
 per ogni procedura ``$\ms{procedure}~\mathit{id}~s$'',
@@ -713,31 +472,25 @@ e $\mathcal{I}\llbracket \ms{stop} \rrbracket  ::=  \ms{start}$;
 \item infine, costruiamo il CFG di ogni procedura (incluse le loro inverse).
 \end{itemize}
 %
-Ad esempio, per il programma Sum3 (Figura~\ref{fig:program}),
-la funzione $\mathit{flow}$ genera i seguenti CFG 
-(la rappresentazione grafica è illustrata nella Figura~\ref{fig:cfg-ex}):%
-\footnote{Per semplicità,
-non mostriamo il CFG di $\mathit{sumMul3}^{-1}$ visto che non c'è  
-nessuna $\ms{uncall}$ nel programma, e pertanto non sarebbe utilizzato}
+Ad esempio, per il programma MCM (Figura~\ref{fig:program}),
+la funzione $\mathit{flow}$ genera i seguenti CFG (la rappresentazione grafica è illustrata nella Figura~\ref{fig:cfg-ex}):
+
 \[
-\begin{array}{rl}
-CFG_{\mathit{main}}  = \{ & (1,2), (2,3),
-(3, 4) ~\}\\[1ex]
-CFG_{\mathit{sumMul3}} = \{ & 
-(5,6), 
-(6,7), 
-(7,8), 
-(8,9), (8,10), 
-(9,11), (10,11),\\
-& (11, 13), 
-(13, 12), (12,7), 
-(13,14), (14,15)~\}
+\begin{array}{ll}
+CFG_{\mathit{main}}  = & \{ (1, 2), (2, 3), (3, 4), (4, 5) ~\}\\[1ex]
+CFG_{\mathit{main}^{-1}}  = & \{ (5, 4), (4, 3), (3, 2), (2, 1) ~\}\\[1ex]
+CFG_{\mathit{MCM}} = & \{  
+(6, 7), (7, 8), (8, 9), (8, 10), (9, 10),
+\\ & (10, 12), (12, 11), (11, 7), (12, 13)~\}\\[1ex]
+CFG_{\mathit{MCM}^{-1}} = & \{ 
+(13, 12), (12, 10), (10, 9), (10, 8),
+\\ & (9, 8), (8, 7), (7, 6), (7, 11), (11, 12)~\}
 \end{array}
 \]
 %The corresponding graphical representation of the CFG can 
 %be seen in Figure~\ref{fig:cfg-ex}.
 
-\begin{figure}[t]
+\begin{figure}[h]
 \centering
 \begin{tikzpicture}[
     % Compact Global Styles
@@ -774,44 +527,48 @@ CFG_{\mathit{sumMul3}} = \{ &
     \node[state] (2) [right=of 1] {2};
     \node[state] (3) [right=of 2] {3};
     \node[state] (4) [right=of 3] {4};
+    \node[state] (5) [right=of 4] {5};
     \node[label_text] at ([xshift=-0.2cm]1.west) {Main program};
     \draw[true] (1) -- (2);
     \draw[true] (2) -- (3);
     \draw[true] (3) -- (4);
+    \draw[true] (4) -- (5);
 
-    % --- Procedure sumMul3 ---
-    \node[state] (5) [below=0.8cm of 1] {5}; 
-    \node[state] (6) [right=of 5] {6};
-    \node[state] (7) [right=of 6] {7}; 
+    % --- Procedure MCM ---
+    \node[state] (6) [below=0.8cm of 1] {6}; 
+    \node[state] (7) [right=of 6] {7};
     \node[state] (8) [right=of 7] {8}; 
-    \node[label_text] at ([xshift=-0.2cm]5.west) {Procedure $\mathit{sumMul3}$};
+    \node[label_text] at ([xshift=-0.2cm]6.west) {Procedure $\mathit{MCM}$};
     \node[state] (9) [above right=0.1cm and 0.5cm of 8] {9};
-    \node[state] (10) [below right=0.1cm and 0.5cm of 8] {10};
-    \node[state] (11) [right=1.8cm of 8] {11};
-    \node[state] (13) [right=of 11] {13};
-    \node[state] (12) [below=0.4cm of 13] {12};
-    \node[state] (14) [right=of 13] {14};
-    \node[state] (15) [right=of 14] {15};
-    \draw[true] (5) -- (6);
+    \node[state] (10) [right=1.8cm of 8] {10};
+    \node[state] (12) [right=of 10] {12};
+    \node[state] (11) [below=0.4cm of 12] {11};
+    \node[state] (13) [right=of 12] {13};
+    
     \draw[true] (6) -- (7);
     \draw[true] (7) -- (8);
     \draw[true] (8) -- (9);
     \draw[true] (8) -- (10);
-    \draw[true] (9) -- (11);
-    \draw[true] (10) -- (11);
-    \draw[true] (11) -- (13);
-    \draw[true] (13) -- (14);
-    \draw[true] (14) -- (15);
-    \draw[true] (13) -- (12);
-    \draw[true] (12) -| (7);
+    \draw[true] (9) -- (10);
+    \draw[true] (10) -- (12);
+    \draw[true] (12) -- (13);
+    \draw[true] (12) -- (11);
+    \draw[true] (11) -| (7);
 \end{tikzpicture}
 \caption{CFGs per il programma Sum3} \label{fig:cfg-ex}
 \end{figure}
 
+Per semplicità, non mostriamo la visualizzazione grafica del CFG di $\mathit{MCM}^{-1}$ e $\mathit{main}^{-1}$ visto che non c'è nessuna $\ms{uncall}$ nel programma, e pertanto non sarebbe utilizzato.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Le Forward Rules}
 
-\begin{figure}[t]
+Le \emph{configurazioni} della semantica prendono la forma $\config{\sigma,\ell,\ell',\s}$, qui il \emph{program counter} è composto da due label, l e l' che rappresentano l'ultimo statement eseguito e il prossimo statement da eseguire. Nel caso delle regole forward la seconda label rappresenta il blocco che bisogna eseguire mentre la prima quello gia eseguito, per le regole backward sarà il contrario. La relazione di transizione $\rh$ definisce la semantica reversibile in direzione forward (avanti). Dato un programma $p = (s~p_1~\ldots~p_n)$, una \emph{configurazione iniziale} é $\config{\emptystate,\entry(s),\ell,\nul}$, dove $\entry(s) \edge \ell$ appartiene al CFG del programma. La funzione \emph{block} ritorna il blocco puntato da una specifica label.
+\bigskip
+
+\noindent Le regole che definiscono i singoli costrutti possono essere trovate in Figura~\ref{fig:reversible-smallstep}:
+
+\begin{figure}[h]
 \small
 \begin{mathpar}
 \inferrule*[leftstyle=\rm,left=$\overrightarrow{\mathit{AssVar}}$] 
@@ -867,32 +624,26 @@ CFG_{\mathit{sumMul3}} = \{ &
 \config{\sigma,\ell,\ell',\s} \rh  \config{\sigma,\ell',\ell'',\s}  
 }
 \end{mathpar}
-\caption{Semantica reversibile in avanti: regole per costrutti base} \label{fig:reversible-smallstep}
+\caption{Semantica reversibile in avanti: regole per i costrutti base} \label{fig:reversible-smallstep}
 \end{figure}
 
-Ora introduciamo la relazione di transizione, $\rh$,
-che definisce la semantica reversibile in direzione avanti.
-%
-Qui, le configurazioni hanno la forma
-$\config{\sigma,\ell,\ell',\s}$, dove il \emph{controllo} della configurazione è ora determinato da una coppia di label che rappresentano l'ultimo statement eseguito e il prossimo statement da eseguire. Facciamo notare che le regole di transizione fanno solo uso di quest'ultimo (il secondo label). Includiamo il primo nelle configurazioni perché sarà utilizzato dalle regole di transizione all'indietro della semantica, in questo modo abbiamo una singola definizione di configurazione che funziona in entrambe le direzioni.
-%
-Le regole che definiscono i singoli costrutti possono essere trovate in Figura~\ref{fig:reversible-smallstep}. Queste regole sono simili alla loro controparte nella semantica small-step\cite{LLS24}. Le principali differenze sono le seguenti:
 \begin{itemize}
-\item Primo, le configurazioni non contengono più il prossimo statement da eseguire, ma contengono il label che lo identifica (questo funge da \emph{program counter}). 
-Quindi, facciamo uso della funzione (parzialmente definita) $\block$ per identificare il blocco puntato da quel label.
-Inoltre, in molti casi, le regole incrementano il program counter in base agli estremi del CFG.
 
-\item La regola $\overrightarrow{\mathit{Call}}$ aggiorna il controllo della configurazione con i label dei primi due statement della procedura. In particolare, il primo label punta allo statement $\ms{start}$ (che non è eseguito) e il secondo punta all'effettivo primo statement della procedura. La regola $\overrightarrow{Return1}$, al contrario, é attivata quando il prossimo statement da eseguire é uno $\ms{stop}$. In questo caso, aggiorniamo lo stato della configurazione in modo che l'ultimo statement eseguito é il precedente $\ms{call}$, e il prossimo statement ad essere eseguito é il suo successivo (attenendoci al CFG).
+\item Le regole $\overrightarrow{\mathit{AssVar}}$ e $\overrightarrow{\mathit{AssArr}}$ definiscono gli assegnamenti. $\overrightarrow{\mathit{AssVar}}$ calcola il nuovo valore della variabile e aggiorna lo store $\sigma$, mentre $\overrightarrow{\mathit{AssArr}}$ calcola anche l'indice e aggiorna il valore dell'array nello store.
 
-\item Le regole $\overrightarrow{\mathit{UnCall}}$ e 
-$\overrightarrow{\mathit{Return2}}$ funzionano analogamente, con la sola differenza che, in questo caso, andiamo a considerare la procedura inversa.\footnote{Facciamo notare che le regole $\overrightarrow{Return1}$ e $\overrightarrow{Return2}$ potrebbero mergere in un'unica regola, applicata indipendentemente se il primo elemento dello stack è una $\ms{call}(\ell'')$
-o una $\ms{uncall}(\ell'')$. Tuttavia, manteniamo le regole separate per motivi di chiarezza.}
+\item La regola $\overrightarrow{\mathit{Call}}$ definisce il comportamento delle chiamate a procedura, trova i primi due blocchi della procedura $id$ e li inserisce nella configurazione attuale. Il primo blocco (entry) è quello di start e di conseguenza non sarà eseguito, mentre il secondo è effettivamente la prima operazione della procedura. Inoltre, inserisce un elemento di tipo \emph{call}, con la label del blocco della chiamata, all'interno dello stack $\s$.
 
-\item Infine, introduciamo una nuova regola, 
-$\overrightarrow{\mathit{Skip}}$, per gestire gli statement del tipo $\ms{skip}$, che incrementa il program counter (sempre attenendosi al CFG).
+\item In maniera simile, la regola $\overrightarrow{\mathit{UnCall}}$ applica la stessa logica per le uncall (chiamate a procedura inversa) ma inserendo un elemento di tipo \emph{uncall} all'interno dello stack $\s$. Per la costruzione presentata precedentemente ogni procedura ha due diversi cfg, uno forward e uno backward.
+
+\item La regola $\overrightarrow{\mathit{Return1}}$, dopo aver incontrato il blocco di \emph{stop}, aggiorna il controllo della configurazione in modo che l'ultimo statement eseguito sia la chiamata a procedura (call) e quello da eseguire sia il suo successore. Per farlo rimuove dallo stack $\s$ l'elemento \emph{call}, la cui label diventa quella che rappresenta l'ultimo statement eseguito.
+
+\item La regola $\overrightarrow{\mathit{Return2}}$ si comporta allo stesso modo ma rimuove dallo stack $\s$ un elemento di tipo \emph{uncall}.
+
+\item La regola $\overrightarrow{\mathit{Skip}}$, molto semplicemente aggiorna il controllo della configurazione per eseguire il prossimo blocco lasciando invariati store $\sigma$ e stack $\s$.
+
 \end{itemize}
-%
-\begin{figure}[tp]
+
+\begin{figure}[h]
 \small
 \begin{mathpar}
 \inferrule*[leftstyle=\rm,left=$\overrightarrow{\mathit{IfTrue1}}$] 
@@ -1002,48 +753,33 @@ $\overrightarrow{\mathit{Skip}}$, per gestire gli statement del tipo $\ms{skip}$
 \end{mathpar}
 \caption[Reversible forward semantics: rules for if and for loop]{Reversible forward semantics: rules for if and for loop \textsuperscript{3}} \label{fig:reversible-ifloop}
 \end{figure}
-\footnotetext{Le regole qui illustrate non sono esattamente quelle di \cite{LV26} ma regole equivalenti prese da un altro articolo degli stessi autori}
+\footnotetext{Le regole qui illustrate non sono esattamente quelle di \cite{LV26} ma regole equivalenti prese da un altro articolo non ancora pubblicato degli stessi autori}
 %
-Il secondo gruppo di regole, quelle per il condizionale e per i loop, sono illustrate in Fugura~\ref{fig:reversible-ifloop}.
-%
-Queste regole sono perfettamente analoghe alla loro controparte nella semantica small-step \cite{LLS24}. L'unica differenza rilevante sta nell'uso di un program counter per identificare il prossimo blocco da eseguire.
-%
-Nota che la premessa $\block(\ell) = e$ in una regola funziona come una condizione: se $\block(\ell)$ non è definito o non ritorna una espressione booleana, allora la regola non è applicabile.
-%
-Nota anche che l'uso della funzione (parzialmente definita) $\context$ è necessario per determinare se una espressione booleana è parte di uno statement condizionale o di un loop.
-%
-In aggiunta, come prima, se $\context(\ell)$ non è definito o l'uguaglianza non è soddisfatta, la regola non è applicabile.
-Osserviamo come gli elementi dello stack $\ms{if\_true}$ e $\ms{if\_false}$ contengano i label per entrambi il test e l'assertion del condizionale. In pratica, solo il secondo label è richiesto (da ciascuna delle due regole $\overrightarrow{\mathit{IfTrue2}}$ e $\overrightarrow{\mathit{IfFalse2}}$). Tuttavia, le regole inverse della semantica richiederanno il primo label (quello del test). Pertanto, includiamo entrambi i label negli elementi dello stack in modo che possano essere usati da entrambe le direzioni, in avanti e indietro, della semantica.
-D'altro canto, quando il program counter punta al test di un loop ($\ell_2$), possiamo terminare il loop e procedere al prossimo statement oppure eseguire $s_2$ e ritornare all'assertion iniziale ($\ell_1$). Di conseguenza, $\ell_2$ ha due label successori all'interno del CFG. Quindi, aggiungiamo la condizione $\ell'_2 \neq \entry(s_2)$ nella regola $\overrightarrow{\mathit{LoopBase}}$ in modo da assicurarci che andiamo ad eseguire il successore giusto.
-%
-In modo simile, la regola $\overrightarrow{\mathit{LoopMain}}$ richiede
-$\ell \neq \exit(s_2)$ per poter assicurare l'accesso al loop piuttosto che eseguire una iterazione successiva.
-Infine, gli elementi dello stack $\ms{loop1}$ e $\ms{loop2}$ potrebbero contenero solo quattro label, $(\ell_1,\entry(s_1),\ell_2,\entry(s_2))$. Ciò sarebbe abbastanza per le regole in avanti della semantica, tuttavia nelle regole all'indietro avremo bisogno di accedere a $\exit(s_1)$ e $\exit(s_2)$. Quindi usiamo $(\ell_1,s_1,\ell_2,s_2)$ come argomenti di $\ms{loop1}$ e $\ms{loop2}$, in modo che possano contenere le informazioni necessarie per entrambe le direzioni della semantica.
+Il secondo gruppo di regole, quelle per il condizionale e per i loop, sono illustrate in Figura~\ref{fig:reversible-ifloop}. In queste regole la premessa $\block(\ell) = e$ funziona come una condizione: se $\block(\ell)$ non è definito o non ritorna una espressione booleana, allora la regola non è applicabile. Inoltre qui la funzione $\context$ è utilizzata per determinare se una espressione booleana è parte di uno statement condizionale o di un loop. Ogni regola è infatti applicabile se e solo se le condizioni previste vengono rispettate. Andiamo a distinguere i seguenti casi:
+\begin{itemize}
 
-Dato un programma $p = (s~p_1~\ldots~p_n)$, una \emph{configurazione iniziale} é $\config{\emptystate,\entry(s),\ell,\nul}$, dove $\entry(s) \edge \ell$ appartiene al CFG del programma.
+\item Quando viene valutato un condizionale viene eseguita una fra le regole $\overrightarrow{\mathit{IfTrue1}}$ e $\overrightarrow{\mathit{IfFalse1}}$, a seconda del risultato della valutazione della prima espressione \emph{e1}. Entrambe le regole aggiornano lo stato della configurazione per eseguire come prossimo blocco il primo del relativo path, e inseriscono nello stack $\s$ un elemento di tipo \emph{if\_true} oppure \emph{if\_false}, con le relative label delle due condizioni e1 e e2.
+
+\item Una volta eseguita una delle due regole precedenti, la prossima è una tra $\overrightarrow{\mathit{IfTrue2}}$ e $\overrightarrow{\mathit{IfFalse2}}$, se sullo stack $\s$ è presente un elemento di tipo \emph{if\_true} viene applicata $\overrightarrow{\mathit{IfTrue2}}$ altrimenti $\overrightarrow{\mathit{IfFalse2}}$. Queste regole valutano la seconda condizione \emph{e2} che deve avere lo stesso valore della prima condizione (quindi nel caso di $\overrightarrow{\mathit{IfTrue2}}$ deve essere \emph{true} mentre nel caso di $\overrightarrow{\mathit{IfFalse2}}$ deve essere \emph{false}), a questo punto procedonoa  rimuovere il relativo elemento dallo stack e aggiornano la configurazione in modo da poter eseguire il prossimo blocco.
+
+\item Quando viene valutato un ciclo, la regola d'ingresso (quindi eseguita solo se il blocco precedente non fa a sua volta parte di questo loop) è $\overrightarrow{\mathit{LoopMain}}$, questa regola valuta la prima condizione \emph{e1} e si assicura che sia \emph{true}. In tal caso inserisce nello stack $\s$ un elemento di tipo \emph{loop1} che contiene le due condizioni (e1 ed e2) e i due blocchi di statement (s1 e s2), poi aggiorna la configurazione per eseguire il primo blocco di s1.
+
+\item La regola $\overrightarrow{\mathit{LoopBase}}$ gestisce l'uscita dal loop, viene eseguita se sullo stack è presente un elemento di tipo \emph{loop1} e la valutazione della condizione e2 ritorna \emph{true}. Se così, aggiorna la configurazione assicurandosi che il label del prossimo blocco non sia la entry di s2 (perchè significherebbe eseguire un altro ciclo del loop).
+
+\item Se invece sullo stack è presente un elemento di tipo \emph{loop1} ma la valutazione della condizione e2 ritorna \emph{false}, la regola applicata è $\overrightarrow{\mathit{Loop1}}$. In questo caso bisogna eseguire un altro ciclo del loop e quindi entrare nel secondo path, la regola quindi aggiorna la configurazione inserendo come label del prossimo blocco da eseguire la prima (entry) di s2, e sostituisce l'elemento \emph{loop1} in cima allo stack con un elemento di tipo \emph{loop2} contenente gli stessi valori (l1, s1, l2, s2).
+
+\item La regola $\overrightarrow{\mathit{Loop2}}$ viene eseguita quando ritorniamo a valutare la condizione iniziale del loop e1 e in cima allo stack c'è un elemento di tipo \emph{loop2}. Qui bisogna assicurarsi che la condizione iniziale abbia come valore di ritorno \emph{false}, e in tal caso sostituire l'elemento \emph{loop2} con un elemento \emph{loop1} (sempre contenente gli stessi valori) e aggiornare la configurazione per poter eseguire il primo blocco di s1 al prossimo passo.
+
+\end{itemize}
 
 \subsection{Le Backward Rules}
 
-In questa sezione introduciamo le regole all'indietro della semantica reversibile, queste sono definite tramite la relazione di transizione $\lh$.
+In questa sezione introduciamo le regole backward (all'indietro) della semantica reversibile, queste sono definite tramite la relazione di transizione $\lh$ che si legge da destra verso sinistra. Queste regole navigano il Control-Flow Graph all'inverso. Le \emph{configurazioni} usate sono dello stesso tipo di quelle nelle regole forward, $\config{\sigma,\ell,\ell',\s}$, in modo che sia possibile il passaggio da un tipo di regole all'altro senza trasformare la configurazione corrente. In questo caso la prima label $\ell$ indica il blocco da eseguire e la seconda il blocco appena eseguito (nel caso in cui l'istruzione precedente era backward, altrimenti $\ell'$ contiene un'istruzione non eseguita). Quindi, se è appena stata eseguita una istruzione forward che ha messo la label del blocco come prima label della configurazione, un istruzione backward va a rieseguire la stessa istruzione ma invertita. In generale queste regole funzionano in modo simile a quelle forward, ma ci sono alcune differenze che illustriamo di seguito.
+
+Le regole backward per i costrutti base sono illustrate in Figura~\ref{fig:reversible-smallstep-backward}, ogni regola $\overleftarrow{\mathit{Rule}}$ rappresenta la versione inversa della regola forward (in avanti) corrispondente $\overrightarrow{{Rule}}$ dalla Figura~\ref{fig:reversible-smallstep}.
 %
-Intuitivamente, uno step (passo) all'indietro $\config{\sigma,\ell_1,\ell_2,\s} \lh \config{\sigma',\ell'_1,\ell'_2,\s'}$ procede come di seguito: primo, gli effetti dell'esecuzione di $\block(\ell_1)$, i.e., l'ultimo statement eseguito é invertito, creando un nuovo stato di $\sigma'$ e dello stack $\s'$; poi, i label di controllo $\ell_1,\ell_2$ sono aggiornati a $\ell'_1,\ell'_2$ (procedendo all'indietro nel CFG). Nota che la relazione di transizione va da destra verso sinistra indipendentemente dalla direzione in cui punta la freccia.
 
-
-$\flow^{-1}$ rappresenta la funzione che computa l'\emph{inverso} del CFG di un programma:
-$
-\flow^{-1}(s) = \{ (\ell',\ell) \mid (\ell,\ell')\in\flow(s)\}
-$.
-Per chiarezza, nelle regole di transizione all'indietro della semantica, indichiamo gli estremi $(\ell,\ell')\in \flow^{-1}(s)$  del CFG inverso come $\ell \iedge \ell'$; i.e., $\ell \iedge \ell'$ equivale a $\ell' \edge \ell$ nel CFG originale.
-Il seguente lemma dimostra l'equivalenza tra la computazione del CFG inverso di uno statement e il CFG standard dello statement corrispondente invertito:
-The following result states the equivalence between computing
-the inverse CFG of a statement and a standard CFG of the
-corresponding inverse statement:
-
-\begin{lem} Dato uno statement $s$, abbiamo
-$\flow^{-1}(s) = \flow(\mathcal{I}\llbracket s \rrbracket)$.
-\end{lem}
-
-\begin{figure}[t]
+\begin{figure}[h]
 \small
   \begin{mathpar}
         \inferrule*[leftstyle=\rm,left=$\overleftarrow{\mathit{AssVar}}$] 
@@ -1120,14 +856,9 @@ $\flow^{-1}(s) = \flow(\mathcal{I}\llbracket s \rrbracket)$.
 \caption[Reversible backward semantics: rules for basic constructs]{Reversible backward semantics: rules for basic constructs\footnote{Le regole qui illustrate non sono esattamente quelle di \cite{LV26} ma regole equivalenti prese da un altro articolo non ancora pubblicato degli stessi autori}} \label{fig:reversible-smallstep-backward}
 \end{figure}
 
+Le regole utilizzate per l'ingresso ad una chiamata a procedura qui sono $\overrightarrow{{Return1}}$ e $\overrightarrow{{Return2}}$, mentre le regole che gestiscono il ritorno al flusso precedente dopo ad una chiamata sono $\overleftarrow{\mathit{Call}}$ e $\overleftarrow{\mathit{UnCall}}$, che quindi vengono eseguite una volta incontrato un blocco di tipo \emph{start} all'interno del Control-Flow Graph. Queste regole fanno uso della funzione \emph{exit()} al contrario di \emph{entry()}, perchè stiamo percorrendo il cfg all'indietro e vogliamo ottenere la label dell'ultimo blocco di uno statement.
 
-Le regole backward (all'indietro) per i costrutti base sono illustrate in Figura~\ref{fig:reversible-smallstep-backward}.
-%
-In pratica, ogni regola $\overleftarrow{\mathit{Rule}}$ rappresenta la versione inversa della regola forward (in avanti) corrispondente $\overrightarrow{{Rule}}$ dalla Figura~\ref{fig:reversible-smallstep}, eseguendo l'inverso dell'ultimo statement eseguito (puntato dal primo label della configurazione attuale) e procedendo nel CFG inverso (equivalentemente, procedendo all'indietro nel CFG standard).
-%
-In particolare, facciamo notare che le regole $\overleftarrow{\mathit{Call}}$ e $\overleftarrow{\mathit{UnCall}}$ sono eseguite una volta raggiunto lo statement $\ms{start}$, invece,  nelle regole forward $\overrightarrow{{Return1}}$ e $\overrightarrow{{Return2}}$ erano eseguite una volta raggiunto uno statement di tipo $\ms{stop}$.
-
-\begin{figure}[tp]
+\begin{figure}[h]
 \small
 \begin{mathpar}
 \inferrule*[leftstyle=\rm,left=$\overleftarrow{\mathit{IfTrue1}}$] 
@@ -1240,9 +971,7 @@ In particolare, facciamo notare che le regole $\overleftarrow{\mathit{Call}}$ e 
 \caption{Semantica reversibile backwards: regole per if e loop} \label{fig:reversible-ifloop-backward}
 \end{figure}
 
-Le regole backward per gli statement condizionali e loop sono mostrate in Figura ~\ref{fig:reversible-ifloop-backward}. Come prima, ogni regola $\overleftarrow{\mathit{Rule}}$ rappresenta la versione inversa della corrispondente regola forward $\overrightarrow{{Rule}}$ dalla Figura~\ref{fig:reversible-ifloop}. Sottolineiamo solo, come i condizionali e i loop sono ora \emph{undone} dall'inizio alla fine; di conseguenza le regole $\overleftarrow{\mathit{IfTrue2}}$ e $\overleftarrow{\mathit{IfFalse2}}$ ora, ispezionano il context del label per determinare se corrisponde a un assertion di un condizionale o al test di un loop, e inseriscono un nuovo elemento nello stack (nelle regole forward questo era fatto dalle regole $\overrightarrow{\mathit{IfTrue1}}$ e $\overrightarrow{\mathit{IfFalse1}}$).
-
-In maniera simile, per i loop, è ora la regola $\overleftarrow{\mathit{LoopBase}}$ che ispeziona il context (e inserisce un nuovo elemento nello stack). Ora il loop termina con la regola $\overleftarrow{\mathit{LoopMain}}$. Qui, verifichiamo che $\ell \neq \exit(s_2)$, visto che ci sono due possibili successori nel CFG inverso: uno è lo statement che precede il loop (ed è quello di nostro interesse), l'altro è l'ultimo statement di un'iterazione (quindi la exit di $s_2$). Questa condizione ci assicura di procedere nella direzione voluta.
+Le regole backward per gli statement condizionali e loop sono mostrate in Figura ~\ref{fig:reversible-ifloop-backward}. Qui, al contrario della versione forward, sono le regole $\overleftarrow{\mathit{IfTrue2}}$ e $\overleftarrow{\mathit{IfFalse2}}$ ad ispezionare il \emph{context} dello statement per capire se la condizione appartiene ad un condizionale o un ciclo, e ad inserire l'elemento \emph{if\_true} o \emph{if\_false} in cima allo stack. Le regole $\overleftarrow{\mathit{IfTrue1}}$ e $\overleftarrow{\mathit{IfFalse1}}$ si assicurano semplicemente che la seconda condizione abbia lo stesso valore della prima ed eliminano il primo elemento dallo stack. Per quanto riguarda i loop, la prima regola applicata quando se ne incontra uno procedendo backward è $\overleftarrow{\mathit{LoopBase}}$, che si comporta analogamente a $\overrightarrow{\mathit{LoopMain}}$ nelle regole forward, quindi analizza il \emph{context}, controlla che la condizione alla prima iterazione del ciclo sia \emph{true} ed inserisce l'elemento nello stack $\s$. Di conseguenza il loop termina con la regola $\overleftarrow{\mathit{LoopMain}}$ che verifica la condizione finale (che nella versione forward è la condizione iniziale del ciclo), elimina l'elemento di tipo \emph{loop1} dallo stack e instrada il controllo della configurazione verso la direzione giusta (impedisce di entrare nel path del ciclo grazie alla condizione \emph{l != exit(s2)}). Le regole $\overleftarrow{\mathit{Loop1}}$ e $\overleftarrow{\mathit{Loop2}}$ funzionano rispettivamente come le regole $\overrightarrow{\mathit{Loop2}}$ e $\overrightarrow{\mathit{Loop1}}$.
 
 \section{ANTLR}
 ANTLR v4 é un potente generatore di parser utilizzabile per leggere, processare, eseguire, o tradurre testo strutturato come sorgenti di codice per programmi, dati e file di configurazione. Ciò significa che può essere utilizzato per costruire diversi tool come convertitori di codice legacy, interpreti di linguaggi da dominio, traduttori da Java a C\#, renderizzatori di wiki, parser XML/HTML, riconoscitori di pattern DNA, assemblers bytecode, pretty printers e interi compilatori. Da una descrizione di un linguaggio formale chiamata grammatica, ANTLR genera un parser per quel linguaggio, che può automaticamente costruire alberi di parsing, cioé strutture dati che rappresentano come un input appartiene ad una grammatica. Inoltre, genera automaticamente una classe visitor per l'albero, che possiamo utilizzare per visitare i nodi degli alberi creati, tramite ereditarietà è inoltre possibile personalizzare il visitor per poter utilizzare l'albero di parsing in ogni tipo di progetto. ANTLR é vastamente utilizzato perché facile da comprendere, potente, flessibile, genera output leggibile, l'intero sorgente è sotto licenza BSD, ed é attivamente supportato. Per ulteriori approfondimenti in materia invitiamo a far riferimento al libro di ANTLR \cite{antlr} oppure al sito web \cite{antlrwebsite}.
@@ -1257,7 +986,7 @@ La struttura delle grammatiche .g4 é essenzialmente una dichiarazione seguita d
 In questo documento non andremo ad approfondire ulteriormente sulle possibilità che ANTLR offre per la creazione di grammatiche, in quanto la grammatica creata per il debugger non fa uso di funzionalità piu avanzate di quelle illustrate, ma per un maggiore approfondimento invitiamo a consultare la documentazione di ANTLR sul sito ufficiale\cite{antlrwebsite}.
 
 \section{Il debugger reversibile step-by-step}
-Di seguito è spiegato nel dettaglio come il programma si presenta e quali funzionalità offre. Innanzitutto è possibile inserire il percorso di file con estensione .janus oppure .txt subito dopo al nome dato all'eseguibile in fase di compilazione, ad esempio "./janusdebugger myprogram.janus". Ci sono inoltre due parametri aggiuntivi opzionalmente inseribili, "-m" serve a specificare il main da utilizzare all'interno del programma, è possibile infatti che un programma abbia main diversi che operano, ad esempio, in maniera invertita e il programmatore abbia bisogno di fare debugging di entrambi senza dover creare un secondo file di codice, abbiamo inserito questa possibilità tenendo in considerazione il programma fib (fibonacci) in Figura~\ref{fig:program}, illustrato nell'articolo di presentazione originale di Janus~\cite{JanusSem}, che andremo anche noi ad utilizzare come esempio. Se non è specificato nessun main in particolare (quindi se non viene inserito "-m" da riga di comando) il debugger andrà ad utilizzare la procedura chiamata "main" in automatico. Il secondo parametro è "-d" che serve a specificare eventuali breakpoint per il nostro codice, il debugger infatti, oltre a funzionare step-by-step, permette di mandare avanti o indietro l'esecuzione del programma fino ad incontrare uno dei breakpoint inseriti (è anche presente la possibilità di aggiungere o rimuovere breakpoint durante l'esecuzione del debugger, ne parliamo nel paragrafo successivo). Non c'è un ordine per inserire i parametri, entrambi sono opzionali ed è possibile inserire prima l'uno o prima l'altro, ma devono essere inseriti dopo al nome del file che contiene il programma (chiaramente essenziale). Quindi un possibile esempio di comando per eseguire il debugger può essere il seguente: "./janusdebugger fibonacci.janus -m main\_fwd -d 3 7 14".
+Di seguito è spiegato nel dettaglio come il programma si presenta e quali funzionalità offre. Innanzitutto è possibile inserire il percorso di file con estensione .janus oppure .txt subito dopo al nome dato all'eseguibile in fase di compilazione, ad esempio "./janusdebugger myprogram.janus". Ci sono inoltre due parametri aggiuntivi opzionalmente inseribili, "-m" serve a specificare il main da utilizzare all'interno del programma, è possibile infatti che un programma abbia main diversi che operano, ad esempio, in maniera invertita e il programmatore abbia bisogno di fare debugging di entrambi senza dover creare un secondo file di codice, abbiamo inserito questa possibilità tenendo in considerazione il programma fib (fibonacci) in Figura~\ref{fig:program}, illustrato nell'articolo di presentazione originale di Janus~\cite{JanusSem}, che anche noi usiamo come esempio. Se non è specificato nessun main in particolare (quindi se non viene inserito "-m" da riga di comando) il debugger andrà ad utilizzare la procedura chiamata "main" in automatico. Il secondo parametro è "-d" che serve a specificare eventuali breakpoint per il nostro codice, il debugger infatti, oltre a funzionare step-by-step, permette di mandare avanti o indietro l'esecuzione del programma fino ad incontrare uno dei breakpoint inseriti (è anche presente la possibilità di aggiungere o rimuovere breakpoint durante l'esecuzione del debugger, ne parliamo nel paragrafo successivo). Non c'è un ordine per inserire i parametri, entrambi sono opzionali ed è possibile inserire prima l'uno o prima l'altro, ma devono essere inseriti dopo al nome del file che contiene il programma (chiaramente essenziale). Quindi un possibile esempio di comando per eseguire il debugger può essere il seguente: "./janusdebugger fibonacci.janus -m main\_fwd -d 3 7 14".
 \bigskip
 
 Programma esempio: dato un numero n, la procedura fib computa l'(n+1)-esimo e l'(n+2)-esimo numero di Fibonacci all'interno di x1 e x2. Le variabili dichiarate sono n, x1, x2. Tutte le variabili cominciano col valore zero. Le dichiarazioni delle procedure sono le seguenti:
@@ -1266,29 +995,29 @@ Programma esempio: dato un numero n, la procedura fib computa l'(n+1)-esimo e l'
     \centering
     \begin{minipage}{0.95\textwidth}
         \ttfamily 
-        % --- Left Column ---
-        \begin{minipage}[t]{0.50\textwidth}
-            \kw{procedure} fib \\
-            \hspace*{1em} \kw{if} n = 0 \kw{then} x1 += 1 \\
-            \hspace*{8em} x2 += 1 \\
-            \hspace*{6em} \kw{else} n -= 1 \\
-            \hspace*{8em} call fib \\
-            \hspace*{8em} x1 += x2 \\
-            \hspace*{8em} x1 <=> x2 \\
-            \hspace*{1em} \kw{fi} x1 = x2 \\
-        \end{minipage}
-        \hfill 
-        % --- Right Column ---
-        \begin{minipage}[t]{0.50\textwidth}
-            \kw{procedure} main\_fwd \\
-            \hspace*{1em} n += 4 \\
-            \hspace*{1em} call fib \\
-            \vspace{0.5em} \\
-            \kw{procedure} main\_bwd \\
-            \hspace*{1em} x1 += 5 \\
-            \hspace*{1em} x2 += 8 \\
-            \hspace*{1em} uncall fib \\
-        \end{minipage}
+        1 \hspace*{5em}n\\
+        2 \hspace*{5em}x1\\
+        3 \hspace*{5em}x2\\
+        4 \\
+        5 \hspace*{5em}\kw{procedure} fib \\
+        6 \hspace*{6em} \kw{if} n = 0 \kw{then} \\
+        7 \hspace*{13em} x1 += 1 \\
+        8 \hspace*{13em} x2 += 1 \\
+        9 \hspace*{11em} \kw{else} \\
+        10 \hspace*{13em} n -= 1 \\
+        11 \hspace*{13em} call fib \\
+        12 \hspace*{13em} x1 += x2 \\
+        13 \hspace*{13em} x1 <=> x2 \\
+        14 \hspace*{6em} \kw{fi} x1 = x2 \\
+        15 \\
+        16 \hspace*{5em}\kw{procedure} main\_fwd \\
+        17 \hspace*{6em} n += 4 \\
+        18 \hspace*{6em} call fib \\
+        19 \\
+        20 \hspace*{5em}\kw{procedure} main\_bwd \\
+        21 \hspace*{6em} x1 += 5 \\
+        22 \hspace*{6em} x2 += 8 \\
+        23 \hspace*{6em} uncall fib \\
     \end{minipage}
     \caption{fib: programma che calcola la sequenza di fibonacci}
     \label{fig:program}
@@ -1305,13 +1034,56 @@ Com'è possibile vedere in Figura~\ref{fig:fib_open}, una volta eseguito il debu
 \item La sezione \emph{INPUT} serve semplicemente ad inserire i comandi illustrati nella sezione COMMANDS e interagisce mostrando a video "Unknown command" in caso venga inserito qualcosa di diverso.
 \end{itemize}
 
-\begin{figure}[h]
+\newpage
+\noindent Ora vediamo come si presenta il debugger una volta aperto con il programma di fibonacci:
+\begin{figure}[!h]
     \centering
     %\hspace*{-4.3cm}
-    \includegraphics[width=1\textwidth]{fib_opening.png}
-    \caption{Come si presenta il debugger una volta aperto con il programma di fibonacci}
+    \includegraphics[width=1\textwidth]{pictures/fib_opening.png}
     \label{fig:fib_open}
 \end{figure}
+
+Non avendo inserito nessun breakpoint, proviamo ad avanzare fino alla fine del programma con "ff", il risultato dovrebbe essere x1 = 5 e x2 = 8:
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1\textwidth]{pictures/fib_1.png}
+    \label{fig:fib1}
+\end{figure}
+
+Adesso inseriamo due breakpoint a riga 7 dove c'è l'istruzione "x1 += 1" e a riga 12 dove c'è l'istruzione "x1 += x2" tramite il comando "newbreakpoint 7 12", la prima viene eseguita una volta soltanto quando n è uguale a 0 mentre la seconda viene eseguita dopo ogni chiamata a fib dove n != 0, procediamo eseguendo il comando "bb":
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1\textwidth]{pictures/fib_2cut.png}
+    \label{fig:fib2}
+\end{figure}
+
+Adesso possiamo notare alcune differenze. Visto che ci siamo mossi in direzione backward il primo blocco \emph{l1} è quello che contiene l'istruzione indicata dal breakpoint che deve ancora essere eseguita, mentre il secondo blocco \emph{l2} contiene l'istruzione appena eseguita, questa è uno swap (x1 $<=>$ x2) quindi i valori di x1 e x2 sono invertiti. Inoltre è ora possibile vedere due blocchi all'interno dello stack: la call della procedura fib e il ramo else dell'if all'interno del quale si trova l'istruzione cercata.
+\bigskip
+
+Visto che questo breakpoint viene incontrato ad ogni chiamata di fib in cui n!=0, e lo stack del nostro programma ne contiene più di una proviamo a rimuoverlo dai breakpoint tramite il comando "removebreakpoint 12", poi eseguiamo nuovamente il comando "bb" per raggiungere l'altro breakpoint:
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1\textwidth]{pictures/fib_3cut.png}
+    \label{fig:fib3}
+\end{figure}
+
+Ora ci troviamo all'inizio della serie di fibonacci, è possibile vedere tutte le chiamate a fib che il programma effettua all'interno dello stack sulla cui cima è presente un elemento di tipo \emph{THEN} a cui ci troviamo perchè la condizione n=0 è soddisfatta in questo punto. L'istruzione successiva al nostro breakpoint (in direzione forward) è l'assegnamento x2+=1, proviamo quindi ad eseguire il comando "f":
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1\textwidth]{pictures/fib_4cut.png}
+    \label{fig:fib4}
+\end{figure}
+
+Com'è possibile vedere, abbiamo avanzato di una istruzione, l'assegnamento x2+=1 si trova ora nella posizione \emph{l1} che, avendo fatto un passo forward, indica l'istruzione appena eseguita.
+\bigskip
+
+Facciamo anche un tentativo di inserire un comando non esistente come "test" e vediamo che il debugger ci dà un messaggio di errore senza interrompere l'esecuzione, possiamo infatti continuare ad inserire altri comandi:
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1\textwidth]{pictures/fib_5cut.png}
+    \label{fig:fib5}
+\end{figure}
+
 
 \section{Installazione requisiti}
 
@@ -1342,6 +1114,7 @@ Infine possiamo compilare ed eseguire il nostro progetto, andando ad includere i
 
 Specifichiamo che i file generati da ANTLR sono locati all'interno della cartella "janus", che la versione utilizzata di C++ è la 20, e il codice non é compatibile con versioni precedenti.
 
+\newpage
 \section{Implementazione}
 
 Il primo passo per l'implementazione è stato definire la grammatica nel formato ".g4" richiesto da ANTLR. Di seguito la grammatica combinata \emph{janus.g4} effettivamente utilizzata nel progetto come sorgente per ANTLR in modo da creare lexer e parser:
@@ -1349,6 +1122,7 @@ Il primo passo per l'implementazione è stato definire la grammatica nel formato
 \begin{figure}[!h]
 \small
 \centering
+\hspace*{-0.5cm}
 $\begin{array}{r@{\quad}c@{\quad}l}
 \text{grammar} & \text{janus;} \\[0.5em]
 \text{program} & ::= & \text{variables}? \text{ functions;} \\
@@ -1356,9 +1130,9 @@ $\begin{array}{r@{\quad}c@{\quad}l}
 \text{functions} & ::= & \text{function} \mid \text{function functions;} \\
 \text{function} & ::= & \text{'procedure'} \text{ functionName statements}?; \\
 \text{statements} & ::= & \text{assignmentExpression} \mid \text{ifConstructor} \mid \text{loopConstructor} \\
-& \mid & \text{functionCall} \mid \text{skip} \mid \text{statements statements;} \\
+& & \mid \text{functionCall} \mid \text{skip} \mid \text{statements statements;} \\
 \text{assignmentExpression} & ::= & \text{variableName ( '[' expression ']' )? assignmentOperator expression;} \\
-\text{ifConstructor} & ::= & \text{ifExpression fiExpression} \mid \text{ifExpression elseExpression fiExpression;} \\
+\text{ifConstructor} & ::= & \text{ifExpression fiExpression} \mid \\ & & \text{ifExpression elseExpression fiExpression;} \\
 \text{ifExpression} & ::= & \text{'if' '('? expression ')'? 'then' statements;} \\
 \text{elseExpression} & ::= & \text{'else' statements;} \\
 \text{fiExpression} & ::= & \text{'fi' expression;} \\
@@ -1367,7 +1141,7 @@ $\begin{array}{r@{\quad}c@{\quad}l}
 \text{untilExp} & ::= & \text{'until' expression;} \\
 \text{doExp} & ::= & \text{'do' statements;} \\
 \text{loopExp} & ::= & \text{'loop' statements;} \\
-\text{expression} & ::= & \text{Digit} \mid \text{TextDigit ( '[' expression ']' )?} \mid \text{expression operator expression;} \\
+\text{expression} & ::= & \text{Digit} \mid \text{TextDigit ( '[' expression ']' )?} \mid \\ & & \text{expression operator expression} \mid \text{'(' expression ')';}\\
 \text{functionCall} & ::= & \text{call} \text{ functionName;} \\
 \text{skip} & ::= & \text{'skip';} \\
 \text{assignmentOperator} & ::= & \text{'+='} \mid \text{'-='} \mid \text{'\textless=\textgreater'} \mid \text{'\^{}= '}; \\
@@ -1375,7 +1149,7 @@ $\begin{array}{r@{\quad}c@{\quad}l}
 \text{arithmeticOperator} & ::= & \text{'*'} \mid \text{'+'} \mid \text{'-'} \mid \text{'/'} \mid \text{'\%'}; \\
 \text{bitwiseOperator} & ::= & \text{'\&'} \mid \text{'\textbar'} \mid \text{'\^{}'}; \\
 \text{logicalOperator} & ::= & \text{'\&\&'} \mid \text{'\textbar\textbar'}; \\
-\text{operator} & ::= & \text{arithmeticOperator} \mid \text{bitwiseOperator} \mid \text{relationalOperator} \mid \text{logicalOperator}; \\
+\text{operator} & ::= & \text{arithmeticOperator} \mid \text{bitwiseOperator} \mid \\ & & \text{relationalOperator} \mid \text{logicalOperator}; \\
 \text{call} & ::= & \text{'call'} \mid \text{'uncall'}; \\
 \end{array}$
 \caption{Grammatica Janus utilizzata per il debugger}
@@ -1418,12 +1192,12 @@ Nel file structures.h sono definite le strutture utilizzate nel nostro codice, i
 
 Come mostrato in Figura~\ref{fig:block} ogni blocco è composto da tre campi necessari per la sua inizializzazione, il label del blocco, la riga di codice a cui si trova il blocco (line) e il tipo (BlockType type) del blocco che può essere uno tra i seguenti: START, STOP, ASS\_VAR, ASS\_ARR, SWAP, SKIP, CALL, UNCALL, IF, FI, FROM, UNTIL. Ci sono inoltre altri sei campi utilizzati a seconda del tipo del nostro blocco.
 
-I primi quattro campi sono inizializzati nei blocchi degli assegnamenti e nei blocchi di swap, "varName" e "op" contengono rispettivamente il nome della variabile che viene alterata e l'operazione eseguita. Per quanto rigurada "expr1" ed "expr2", questi campi contengono degli \emph{ExpressionContext}, strutture dati fornite da ANTLR che compongono i nodi dell'albero di parsing, il loro contenuto dipende dal tipo di assegnamento, se è infatti quello di una variabile expr1 contiene l'ExpressionContext di cio che si trova alla destra dell'operando ed expr2 rimane vuoto, nel caso in cui l'assegnamento sia quello di un array, expr1 contiene l'ExpressionContext di ciò che si trova tra le parentesi quadre "[]" ed expr2 contiene l'ExpressionContext di cio che si trova alla destra dell'operando. La valutazione del contenuto dei context verrà fatta successivamente all'interno della classe "ReversibleJanusInterpreter" nel file "ReversibleJanusInterpreter.h". Gli ultimi due campi sono usati rispettivamente, "procedurename" quando il blocco è quello di una procedure call/uncall e contiene il nome della procedura chiamata, mentre "condExpr" quando nel blocco è presente una condizione (quindi if, fi, from e until) e contiene l'ExpressionContext della condizione.
+I primi quattro campi sono inizializzati nei blocchi degli assegnamenti e nei blocchi di swap, "varName" e "op" contengono rispettivamente il nome della variabile che viene alterata e l'operazione eseguita. Per quanto riguarda "expr1" ed "expr2", questi campi contengono degli \emph{ExpressionContext}, strutture dati fornite da ANTLR che compongono i nodi dell'albero di parsing, il loro contenuto dipende dal tipo di assegnamento, se è infatti quello di una variabile expr1 contiene l'ExpressionContext di cio che si trova alla destra dell'operando ed expr2 rimane vuoto, nel caso in cui l'assegnamento sia quello di un array, expr1 contiene l'ExpressionContext di ciò che si trova tra le parentesi quadre "[]" ed expr2 contiene l'ExpressionContext di cio che si trova alla destra dell'operando. La valutazione del contenuto dei context verrà fatta successivamente all'interno della classe "ReversibleJanusInterpreter" nel file "ReversibleJanusInterpreter.h". Gli ultimi due campi sono usati rispettivamente, "procedurename" quando il blocco è quello di una procedure call/uncall e contiene il nome della procedura chiamata, mentre "condExpr" quando nel blocco è presente una condizione (quindi if, fi, from e until) e contiene l'ExpressionContext della condizione. Vogliamo far notare che grazie a questa struttura dei blocchi il debugger non implementa direttamente la funzione \emph{context} presentata nella semantica~\ref{sec:LV26}, infatti questa veniva utilizzata una volta incontrata una condizione per capire se fa parte di un condizionale o un loop, questo non è necessario perchè esiste il campo che indica il tipo del blocco (BlockType \emph{type}) e dal tipo di blocco è possibile capire di che costrutto fa parte.
 \bigskip
 
 Gli elementi dello stack, invece, sono definiti da un tipo (StackItemType type) che può essere, come indicato nella semantica, uno tra i seguenti: CALL, UNCALL, IF\_TRUE, IF\_FALSE, LOOP1, LOOP2. Ogni elemento dello stack è definito, inoltre, da un label (Label l) questo indica un blocco che è necessario tenere da parte per il funzionamento del debugger e che dipende dal tipo dell'elemento nello stack. Per gli elementi di tipo CALL e UNCALL il label è quello del blocco della chiamata (utilizziamo il termine "chiamata" anche per le uncall in quanto, come illustrato nella semantica reversibile, queste sono procedure con un proprio cfg indipendente da quello delle procedure da cui sono state create per inversione), per gli elementi di tipo IF\_TRUE e IF\_FALSE, il label inserito nello stack è quello del test (la condizione iniziale), essenziale per assicurare la reversibilità del debugger,  e per gli elementi di tipo LOOP1 e LOOP2, il label inserito è quello rispettivamente dei blocchi FROM e UNTIL (che contengono le condizioni del ciclo: assertion e test).
 
-Vogliamo far notare ora una piccola differenza tra la semantica reversibile illustrata nella sezione~\ref{sec:LV26}~\cite{LV26} e la nostra implementazione del debugger, nella semantica infatti gli elementi dello stack possono avere piu di un label inserito. Nel caso degli IF\_TRUE e degli IF\_FALSE vengono inseriti entrambi i label delle condizioni, e nel caso di LOOP1 e LOOP2 vengono inseriti, non solo i label di entrambe le condizioni, ma anche gli statement dei due path del ciclo. Nell'implementazione presentata abbiamo considerato ciò non necessario e abbiamo deciso di evitarlo, ottenendo una soluzione del tutto equivalente, in quanto avevamo la possibilità di reperire queste informazioni in altro modo grazie alla nostra costruzione delle strutture dati. Infatti, nel caso degli IF, quando ci troviamo a rimuovere l'elemento dallo stack (IF\_TRUE o IF\_FALSE) l'elemento indicato dal nostro label corrente l2 è proprio il blocco contenente la seconda condizione, pertanto è futile inserirla nello stack, ci basta inserire la prima e confrontarla con quella nel blocco l2 che stiamo valutando, la nostra struttura del cfg~\ref{fig:programcfg} ci permette a tale scopo, attraverso la mappa "blocks", di ottenere un blocco a partire dalla sua label (discorso equivalente nel caso backward ma con l1). Nel caso dei LOOP, si applica lo stesso discorso per le condizioni, ma nella semantica reversibile al contrario della nostra implementazione, gli elementi dello stack contengono anche i blocchi di statements dei due path del loop, anche questi sono futili nel nostro caso perchè utilizzati in combinazione con la funzione entry() per trovare il primo blocco degli statement e capire in che direzione procedere, ma nella nostra implementazione le mappe "forwardFlow" e "backwardFlow" associano ad ogni label tutte le possibili label successive (e precedenti), di solito la label successiva è singola ma nei casi dei blocchi associati alla seconda condizione del ciclo le label successive sono due e l'implementazione decide se prendere la prima o la seconda in base al risultato della condizione (discorso analogo nel caso backwards), pertanto non serve salvare all'interno dello stack i blocchi di statement del ciclo. E' per queste ragioni che le funzioni entry() ed exit() non sono direttamente implementate nel nostro debugger
+Vogliamo far notare ora una piccola differenza tra la semantica reversibile illustrata nella sezione~\ref{sec:LV26}~\cite{LV26} e la nostra implementazione del debugger, nella semantica infatti gli elementi dello stack possono avere piu di un label inserito. Nel caso degli IF\_TRUE e degli IF\_FALSE vengono inseriti entrambi i label delle condizioni, e nel caso di LOOP1 e LOOP2 vengono inseriti, non solo i label di entrambe le condizioni, ma anche gli statement dei due path del ciclo. Nell'implementazione presentata abbiamo considerato ciò non necessario e abbiamo deciso di evitarlo, ottenendo una soluzione del tutto equivalente, in quanto avevamo la possibilità di reperire queste informazioni in altro modo grazie alla nostra costruzione delle strutture dati. Infatti, nel caso degli IF, quando ci troviamo a rimuovere l'elemento dallo stack (IF\_TRUE o IF\_FALSE) l'elemento indicato dal nostro label corrente l2 è proprio il blocco contenente la seconda condizione, pertanto è futile inserirla nello stack, ci basta inserire la prima e confrontarla con quella nel blocco l2 che stiamo valutando, la nostra struttura del cfg~\ref{fig:programcfg} ci permette a tale scopo, attraverso la mappa "blocks", di ottenere un blocco a partire dalla sua label (discorso equivalente nel caso backward ma con l1). Nel caso dei LOOP, si applica lo stesso discorso per le condizioni, ma nella semantica reversibile al contrario della nostra implementazione, gli elementi dello stack contengono anche i blocchi di statements dei due path del loop, anche questi sono futili nel nostro caso perchè utilizzati in combinazione con la funzione entry() per trovare il primo blocco degli statement e capire in che direzione procedere, ma nella nostra implementazione le mappe "forwardFlow" e "backwardFlow" associano ad ogni label tutte le possibili label successive (e precedenti), di solito la label successiva è singola ma nei casi dei blocchi associati alla seconda condizione del ciclo le label successive sono due e l'implementazione decide se prendere la prima o la seconda in base al risultato della condizione (discorso analogo nel caso backwards), pertanto non serve salvare all'interno dello stack i blocchi di statement del ciclo. E' per queste ragioni che le funzioni entry() ed exit() non sono direttamente implementate nel nostro debugger.
 \bigskip
 
 \begin{figure}[h]
@@ -1481,7 +1255,7 @@ La classe CFGbuilder definita nel file "CFGbuilder.h" rappresenta il vero e prop
         \hspace*{1em} virtual any visitVariables(janusParser::VariablesContext *ctx) override \\
         \hspace*{1em} virtual any visitFunction(janusParser::FunctionContext *ctx) override\\
         \hspace*{1em} virtual any visitStatements(janusParser::StatementsContext *ctx) override\\
-        \hspace*{1em} virtual any visitAssignmentExpression(janusParser::AssignmentExpressionContext *ctx) override \\
+        \hspace*{1em} virtual any visitAssignmentExpression(janusParser::AssignmentExpressionContext \\ \hspace*{4em} *ctx) override \\
         \hspace*{1em} virtual any visitIfConstructor(janusParser::IfConstructorContext *ctx) override \\
         \hspace*{1em} virtual any visitLoopConstructor(janusParser::LoopConstructorContext *ctx) override\\
         \hspace*{1em} virtual any visitFunctionCall(janusParser::FunctionCallContext *ctx) override \\
@@ -1494,6 +1268,7 @@ La classe CFGbuilder definita nel file "CFGbuilder.h" rappresenta il vero e prop
 
 \begin{figure}[t]
     \centering
+    %\hspace*{4.5cm}
     \begin{minipage}{1\textwidth}
         \ttfamily 
         a b c \\
@@ -1510,13 +1285,10 @@ La classe CFGbuilder definita nel file "CFGbuilder.h" rappresenta il vero e prop
 
 \begin{figure}[!h]
     \centering
-    \hspace*{-4.3cm}
-    \includegraphics[width=1.6\textwidth]{parsetree.png}
+    \includegraphics[width=0.89\textwidth]{pictures/parsetree3.png}
     \caption{Albero di parsing del programma esempio}
     \label{fig:parsetree}
 \end{figure}
-\bigskip
-\bigskip
 \bigskip
 
 Di seguito andiamo a spiegare cosa succede quando ciascuno dei metodi viene chiamato durante la visita dell'albero di parsing, nel nome del metodo è inserito il tipo di nodo che viene visitato per eseguirlo.
@@ -1575,7 +1347,13 @@ Il metodo \emph{printState} è chiamato dal main ad ogni passo (o al raggiungime
 
 \section{Conclusioni e possibili lavori futuri}
 
-Con questo documento abbiamo introdotto un debugger che si limita ai costrutti base di Janus, un possibile aggiornamento futuro può essere l'aggiunta di nuovi costrutti o nuove funzionalità per il linguaggio, altri interpreti per janus permettono gia, ad esempio, l'inizializzazione di variabili locali. Anche l'aggiunta di breakpoint che si attivano solo nel caso in cui certe condizioni vengono rispettate potrebbe essere un aggiunta utile. Sebbene altri interpreti permettono la generazione dell'inverso del codice, nel nostro caso non è strettamente necessario in quanto il debugger è reversibile da sè, quindi basta partire dal fondo del programma e procedere all'indietro per ottenere l'inverso, tuttavia può tornare utile inserire un generatore di codice in altri linguaggi come Java o C++. Un altro lavoro che potrebbe tornare utile ad un utente che desidera fare debugging anche di codice di grandi dimensioni potrebbe essere l'inserimento di un'nterfaccia grafica, magari con la visualizzazione a schermo del codice per intero evidenziando la riga attualmente in esecuzione. Un ultimo aggiornamento che potrebbe essere fatto è la possibilità di cambiare il valore di un assegnamento durante l'esecuzione del debugger per poter fare test sugli esiti diversi che il programma può ottenere senza dover riscrivere il codice e rieseguire il debugger.
+Costruire un debugger reversibile per un linguaggio intrinsecamente reversibile come Janus è concettualmente molto diverso rispetto a farlo per un linguaggio non reversibile. Il vantaggio fondamentale è che in un linguaggio reversibile l'inversione è una proprietà semantica del linguaggio stesso, mentre in un linguaggio non reversibile va artificialmente ricostruita o simulata dal debugger. Un debugger per un linguaggio tradizionale richiederebbe un sistema per salvare in memoria i cambiamenti fatti allo stato della computazione ad ogni passo, altrimenti operazioni di sovrascrittura come gli assegnamenti non potrebbero essere rese reversibili in quanto prevedono che alcune informazioni siano scartate. Il problema degli assegnamenti è risolto in Janus grazie al sistema di trasformazioni reversibili delle variabili senza che il valore di queste venga scartato (ad esempio incrementando o decrementando). Anche i condizionali e i cicli richiederebbero di salvare il risultato della condizione nel primo caso e il numero di iterazioni nel secondo.
+\medskip
+
+Con questo documento è stato introdotto un debugger step-by-step per il linguaggio di programmazione reversibile Janus che permette all'utente di muoversi in avanti e indietro nella computazione a singoli passi tra i blocchi del programma oppure tra breapoint diversi e analizzare lo stato delle variabili e degli array e lo stato della configurazione tramite i blocchi correnti e lo stack, in ogni punto del programma. Sono stati forniti, inoltre, i dettagli della semantica utilizzata e dell'implementazione della stessa con le relative scelte strutturali e le differenze ove presenti, in modo da poter fornire tutti gli strumenti per lavorare sul codice ed arricchirlo o adattarlo a specifiche esigenze.
+\medskip
+
+Tuttavia il progetto si limita ai costrutti base di Janus, un possibile aggiornamento futuro può essere l'aggiunta di nuovi costrutti o nuove funzionalità per il linguaggio, altri interpreti per janus permettono gia, ad esempio, l'inizializzazione di variabili locali. Anche l'aggiunta di breakpoint che si attivano solo nel caso in cui certe condizioni vengono rispettate potrebbe essere un aggiunta utile. Sebbene altri interpreti permettono la generazione dell'inverso del codice, nel nostro caso non è strettamente necessario in quanto il debugger è reversibile da sè, quindi basta partire dal fondo del programma e procedere all'indietro per ottenere l'inverso, tuttavia può tornare utile inserire un generatore di codice in altri linguaggi come Java o C++. Un altro lavoro che potrebbe tornare utile ad un utente che desidera fare debugging anche di codice di grandi dimensioni potrebbe essere l'inserimento di un'nterfaccia grafica, magari con la visualizzazione a schermo del codice per intero evidenziando la riga attualmente in esecuzione. Un ultimo aggiornamento che potrebbe essere fatto è la possibilità di cambiare il valore di un assegnamento durante l'esecuzione del debugger per poter fare test sugli esiti diversi che il programma può ottenere senza dover riscrivere il codice e rieseguire il debugger. Questo debugger fa uso di ANTLR per generare il lexer ed il parser, uno sviluppo futuro può essere la scrittura di questi senza partire da un generatore, in modo da ridurre le dipendenze da installare ed evitare eventuali bug relativi ad aggiornamenti di queste.
 
 \bibliographystyle{plain}
 \bibliography{bibliography}

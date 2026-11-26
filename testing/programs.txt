@@ -24,6 +24,24 @@ procedure main_bwd
 
 -------------------------------------------------------------------------
 
+x y i mcm
+
+procedure main
+    x += 5
+    y += 3
+    call MCM
+
+procedure MCM
+from i = 1 do
+                if ((i % x) = 0) && ((i % y) = 0) then
+                    mcm += i
+                fi ((i % x) = 0) && ((i % y) = 0)
+            loop
+                i += 1
+until mcm != 0
+
+-------------------------------------------------------------------------
+
 num
 root
 z
